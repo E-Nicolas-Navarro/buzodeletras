@@ -40,13 +40,15 @@ export const MISSION_WORDS = 24;
 export const BOSS_HITS = 8;
 export const BOSS_ATTACK_DAMAGE = 18;
 export const OXYGEN = { mistake: 5, collision: 22, reward: 3 };
-export function createRun(level, relaxed = false, random = Math.random) {
+export function createRun(level, relaxed = false, random = Math.random, options = {}) {
   return {
     mode: 'diving', level, relaxed, random, diveTime: 0, elapsed: 0,
     score: 0, points: 0, oxygen: 100, depth: 0, visualDepth: 0,
     attempts: 0, mistakes: 0, collisions: 0, streak: 0, bestStreak: 0, wave: 1, sharks: [],
     deck: makeDeck(level, random), cursor: 0, nextId: 1,
-    spawnIn: 0, targetId: null, input: '', effects: [], won: false, boss: null
+    spawnIn: 0, targetId: null, input: '', effects: [], won: false, boss: null,
+    // Two-player team: oxygen, words and Otto's tentacles are shared between devices.
+    coop: Boolean(options.coop), side: options.coop ? 'left' : null, partnerScore: 0, partnerCollisions: 0, pendingHits: 0
   };
 }
 // Coins and gems earned when a run ends. Bonuses reward a clean dive and only
@@ -60,11 +62,19 @@ export function computeRewards(state) {
     add('Palabras escritas', state.score * 3);
   } else {
     add('Nivel completado', 60 + state.level * 30 + Math.floor(state.points / 40), 1 + state.level);
-    if (state.collisions === 0) add('¡Ningún tiburón te tocó!', 120, 3);
-    else if (state.collisions <= 2) add('Pocos tiburones te alcanzaron', 50, 1);
+    const hits = state.collisions + state.partnerCollisions;
+    if (hits === 0) add(state.coop ? '¡Ningún tiburón los tocó!' : '¡Ningún tiburón te tocó!', 120, 3);
+    else if (hits <= 2) add(state.coop ? 'Pocos tiburones los alcanzaron' : 'Pocos tiburones te alcanzaron', 50, 1);
+    if (state.coop) add('¡Ganaron juntos!', 50, 1);
     if (accuracy(state.attempts, state.mistakes) >= 95) add('Letras casi perfectas', 50, 0);
   }
   return { items, coins: items.reduce((sum, item) => sum + item.coins, 0), gems: items.reduce((sum, item) => sum + item.gems, 0) };
+}
+// 0 stars unless a level was finished in challenge mode; fewer sharks, more stars.
+export function starsFor(state) {
+  if (!state.won || state.relaxed) return 0;
+  const hits = state.collisions + state.partnerCollisions;
+  return hits === 0 ? 3 : hits <= 2 ? 2 : 1;
 }
 export function activeSharks(state) { return state.sharks.filter(shark => !shark.departure); }
 export function capacity(state) { return Math.min(4, 1 + Math.floor(state.score / 4)); }
@@ -92,7 +102,7 @@ export function spawnShark(state) {
     if (pool.includes(candidate) && !active.some(shark => shark.word[0] === candidate[0])) { word = candidate; break; }
   }
   word ||= pool.find(candidate => !active.some(shark => shark.word[0] === candidate[0])) || pool[0];
-  const side = state.nextId % 2 ? 'left' : 'right';
+  const side = state.side || (state.nextId % 2 ? 'left' : 'right');
   const lanes = [0, 1, 2, 3].filter(lane => !active.some(shark => shark.lane === lane));
   const lane = lanes[Math.floor(state.random() * lanes.length)] ?? 0;
   const shark = {
@@ -107,8 +117,8 @@ export function currentWord(state) {
 }
 function enterBoss(state) {
   state.mode = 'bossIntro'; state.sharks = []; state.targetId = null; state.input = '';
-  // A supply crate at the wreck gives a fair chance after the descent.
-  state.oxygen = Math.max(state.oxygen, 60);
+  // A supply crate at the wreck gives a fair chance after the descent (solo only: team oxygen is shared).
+  if (!state.coop) state.oxygen = Math.max(state.oxygen, 60);
   const pool = LEVELS[state.level].words.slice(-BOSS_HITS);
   const words = pool.map((word, i) => `${word} ${pool[(i + 3) % pool.length]}`);
   const interval = [9, 8, 10][state.level];
@@ -116,11 +126,26 @@ function enterBoss(state) {
     hp: BOSS_HITS, maxHp: BOSS_HITS, words, wordIndex: 0, introTime: 0,
     attackIn: interval, attackInterval: interval, hitTime: 0, attackTime: 0, defeated: false
   };
+  while (state.pendingHits > 0) { state.pendingHits--; partnerBossHit(state); }
+}
+export function bossAttackDamage(state) { return state.coop ? BOSS_ATTACK_DAMAGE / 2 : BOSS_ATTACK_DAMAGE; }
+// Re-check win/lose/boss conditions after a partner message changed shared state.
+export function refreshRun(state) { endIfNeeded(state); }
+// A tentacle calmed by the partner's device.
+export function partnerBossHit(state) {
+  if (!state.boss) { state.pendingHits++; return; }
+  if (state.boss.hp <= 0 || !['bossIntro', 'boss'].includes(state.mode)) return;
+  state.boss.hp--; state.boss.hitTime = .5;
+  if (state.boss.hp === BOSS_HITS / 2) {
+    state.boss.attackInterval *= .7;
+    state.boss.attackIn = Math.min(state.boss.attackIn, state.boss.attackInterval);
+  }
+  if (state.boss.hp === 0) { state.boss.defeated = true; state.won = true; state.mode = 'ended'; state.points += 300; }
 }
 function endIfNeeded(state) {
   if (state.oxygen <= 0) {
     state.oxygen = 0; state.won = false; state.mode = 'ended';
-  } else if (state.mode === 'playing' && state.score >= MISSION_WORDS) {
+  } else if (state.mode === 'playing' && state.score + state.partnerScore >= MISSION_WORDS) {
     enterBoss(state);
   }
 }
@@ -204,9 +229,9 @@ export function tickRun(state, dt) {
     if (!state.relaxed) {
       state.boss.attackIn -= dt;
       while (state.boss.attackIn <= 0 && state.oxygen > 0) {
-        state.oxygen = Math.max(0, state.oxygen - BOSS_ATTACK_DAMAGE); state.streak = 0;
+        state.oxygen = Math.max(0, state.oxygen - bossAttackDamage(state)); state.streak = 0;
         state.boss.attackIn += state.boss.attackInterval; state.boss.attackTime = .6;
-        state.effects.push({ text: `−${BOSS_ATTACK_DAMAGE}% O₂`, time: 0, kind: 'miss' });
+        state.effects.push({ text: `−${bossAttackDamage(state)}% O₂`, time: 0, kind: 'miss' });
         events.push('bossAttack');
       }
     }

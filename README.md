@@ -1,6 +1,6 @@
 # Buzo de letras
 
-Juego de mecanografía en español para chicos: escribí las palabras de los tiburones para que se alejen del buzo. El buzo salta al agua y se queda en el centro: llegan tiburones de ambos lados y cada palabra lo lleva más profundo. Tras completar 24 palabras llegás al naufragio a 240 metros: superá las ocho frases de Otto para abrir el tesoro. Al quedarse sin oxígeno termina la expedición. Sitio estático, sin dependencias, cuentas, anuncios ni servicios externos.
+Juego de mecanografía en español para chicos: escribí las palabras de los tiburones para que se alejen del buzo. El buzo salta al agua y se queda en el centro: llegan tiburones de ambos lados y cada palabra lo lleva más profundo. Tras completar 24 palabras llegás al naufragio a 240 metros: superá las ocho frases de Otto para abrir el tesoro. Al quedarse sin oxígeno termina la expedición. Sitio estático, sin cuentas ni anuncios. El modo solo no usa servicios externos; el modo de a dos usa PeerJS (ver más abajo).
 
 ## Probar en tu computadora
 
@@ -48,6 +48,16 @@ Al terminar un nivel se ganan **monedas de oro** y **gemas** (se guardan en este
 - **Bonus de tiburones:** si ningún tiburón te toca, +120 monedas y +3 gemas; si te alcanzan 1 o 2, +50 monedas y +1 gema.
 - **Letras casi perfectas** (95 % de precisión o más): +50 monedas.
 - Si te quedás sin oxígeno ganás 3 monedas por palabra; en modo sin apuro, 2 por palabra. Sin gemas ni bonus.
+
+## Jugar de a dos (cooperativo)
+
+Dos personas pueden jugar cada una en su dispositivo. En la pantalla de inicio, una elige **Jugar con un amigo → Crear una sala** y comparte el código de 4 letras; la otra elige **Entrar** y lo escribe. La sala admite solo dos personas y quien la crea es el anfitrión: elige el nivel y empieza la partida.
+
+- Comparten el **oxígeno**, el contador de **24 palabras** y los **8 tentáculos** de Otto. Cada uno ve a su compañero con su traje y accesorios, y puede mandar 👍 🎉 ❤️.
+- Los tiburones de cada uno aparecen en su propia pantalla. Los ataques de Otto restan 9 % a cada uno (18 % en el modo solo) y no hay reserva de oxígeno en el naufragio.
+- Los bonus de tiburones cuentan los de los dos, y ganar juntos suma 50 monedas y 1 gema extra. Cada uno cobra en su propio dispositivo.
+- Las conexiones son directas (WebRTC) mediante [PeerJS](https://peerjs.com), cargado solo al abrir una sala, desde unpkg con versión fija y verificación de integridad. Para que se encuentren usa el servicio público gratuito de PeerJS: puede fallar o tener límites. En el juego solo viajan mensajes del juego (palabras escritas, oxígeno, avatar), y se validan al recibirlos. Si alguna red no permite conexión directa, puede no conectar.
+- El modo solo no hace ninguna conexión de red.
 
 ## Diseño del océano
 

@@ -1,42 +1,148 @@
 import { drawBoat, drawDiver, drawOceanBackdrop, drawOceanForeground, drawShipwreck, drawOctopus } from './visuals.js';
-import { LEVELS, MISSION_WORDS, BOSS_HITS, currentWord, fingerFor, accuracy, computeRewards, createRun, activeSharks, chooseTarget, typeInRun, tickRun } from './engine.js';
+import { LEVELS, MISSION_WORDS, BOSS_HITS, currentWord, fingerFor, accuracy, computeRewards, starsFor, refreshRun, partnerBossHit, bossAttackDamage, createRun, activeSharks, chooseTarget, typeInRun, tickRun } from './engine.js';
 import { SKINS, SLOTS, ACCESSORIES, sanitizeWallet, canAfford, buySkin, equipSkin, equipGear } from './skins.js';
+import { loadPeer, hostRoom, joinRoom, normalizeCode, EMOTES } from './net.js';
 const $ = id => document.getElementById(id);
 const canvas = $('scene'), ctx = canvas.getContext('2d');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let state = createRun(0); state.mode = 'welcome';
-let sound = false, audio, last = 0, clock = 0, width = 1000, height = 480;
+let audio, last = 0, clock = 0, width = 1000, height = 480;
 let pausedMode = 'playing', targetSignature = '';
 let records = {};
 try {
   const stored = JSON.parse(localStorage.getItem('buzo-records-v4') || '{}');
   if (stored && typeof stored === 'object' && !Array.isArray(stored)) records = stored;
 } catch { /* Persistence is optional. */ }
+let seenCoach = false;
+try { seenCoach = localStorage.getItem('buzo-seen-v1') === '1'; } catch { /* Optional. */ }
+let lowWarned = false;
 let wallet = sanitizeWallet(null);
 try { wallet = sanitizeWallet(JSON.parse(localStorage.getItem('buzo-wallet-v1') || 'null')); } catch { /* Persistence is optional. */ }
 function saveWallet() {
   try { localStorage.setItem('buzo-wallet-v1', JSON.stringify(wallet)); } catch { /* Optional in private browsing. */ }
   $('walletCoins').textContent = wallet.coins; $('walletGems').textContent = wallet.gems;
 }
-const modalOpen = () => $('help').open || $('shop').open;
+const modalOpen = () => $('help').open || $('shop').open || $('coop').open;
+// ----- Two-player room: shared oxygen, words and boss, one device each -----
+let room = null, linked = false, partner = null, coopNote = '', syncClock = 0;
+const emotes = [];
+const coopActive = () => Boolean(room && linked);
+const isGuest = () => coopActive() && room.role === 'guest';
+const clamp = value => Math.max(0, Math.min(100, value));
+function sendHello() { if (coopActive()) room.send({ t: 'hello', skin: wallet.equipped, gear: wallet.gear }); }
+function renderLobby() {
+  const inRoom = coopActive();
+  $('coopBanner').hidden = !inRoom && !coopNote; $('leaveRoom').hidden = !inRoom;
+  $('coopText').textContent = inRoom ? `Sala ${room.code} · ${isGuest() ? 'conectado con el anfitrión' : '¡tu compañero está conectado!'}` : coopNote;
+  $('coopButton').hidden = Boolean(room); $('earn').hidden = inRoom;
+  $('startButton').disabled = isGuest();
+  $('startButton').innerHTML = isGuest() ? 'Esperando al anfitrión…' : inRoom ? '¡Empezar juntos!' : '¡Al agua! <span>↗</span>';
+  $('relaxed').disabled = isGuest(); renderLevels();
+}
+function leaveRoom() {
+  room?.close(); room = null; linked = false; partner = null;
+  if (state.coop) home(); else renderLobby();
+}
+function partnerLeft() {
+  room?.close(); room = null; linked = false; partner = null; coopNote = 'Tu compañero se desconectó.';
+  if (state.coop) home(); else renderLobby();
+}
+const COOP_ERRORS = {
+  load: 'No se pudo cargar el servicio de salas. Revisá tu conexión.',
+  server: 'No pudimos conectar con el servicio de salas. Probá de nuevo en un rato.',
+  notfound: 'No encontramos esa sala. Revisá el código.',
+  timeout: 'Tardó demasiado en conectar. Probá de nuevo.'
+};
+function coopFail(kind) {
+  room?.close(); room = null; linked = false;
+  $('coopWait').hidden = true; $('coopMenu').hidden = false; $('coopMessage').textContent = COOP_ERRORS[kind] || COOP_ERRORS.server;
+  renderLobby();
+}
+// Runs a local action and tells the partner what changed in the shared state.
+function track(action) {
+  if (!state.coop || !coopActive()) return action();
+  const oxygen = state.oxygen, score = state.score, collisions = state.collisions;
+  const out = action();
+  if (state.oxygen !== oxygen && !state.relaxed) room.send({ t: 'o2', d: state.oxygen - oxygen });
+  if (state.score !== score) room.send({ t: 'score', v: state.score });
+  if (state.collisions !== collisions) room.send({ t: 'col', v: state.collisions });
+  return out;
+}
+function handlePartner(msg) {
+  if (msg.t === 'hello') { partner = { skin: msg.skin, gear: msg.gear }; return; }
+  if (msg.t === 'start') {
+    if (!isGuest() || !['welcome', 'results', 'ended', 'celebrating'].includes(state.mode)) return;
+    $('shop').close(); $('help').close();
+    $('level').value = String(msg.level); $('relaxed').checked = msg.relaxed; start(); return;
+  }
+  if (!state.coop) return;
+  if (msg.t === 'o2' && !state.relaxed) state.oxygen = clamp(state.oxygen + msg.d);
+  else if (msg.t === 'sync' && !state.relaxed && isGuest()) state.oxygen = msg.o;
+  else if (msg.t === 'score') state.partnerScore = msg.v;
+  else if (msg.t === 'col') { if (msg.v > state.partnerCollisions) toast('¡Un tiburón alcanzó a tu compañero!', 'miss'); state.partnerCollisions = msg.v; }
+  else if (msg.t === 'hit') partnerBossHit(state);
+  else if (msg.t === 'emote') emotes.push({ who: 'partner', text: msg.e, time: 0 });
+  const before = state.mode;
+  refreshRun(state);
+  if (before === 'playing' && state.mode === 'bossIntro') $('status').textContent = '¡Llegaron al naufragio! Otto custodia el tesoro.';
+  sync(); if (state.mode === 'ended') finish();
+}
+const roomHandlers = () => ({
+  onCode: code => { $('roomCode').textContent = code; $('coopMenu').hidden = true; $('coopWait').hidden = false; $('coopMessage').textContent = ''; },
+  onConnect: () => { linked = true; coopNote = ''; $('coopMessage').textContent = ''; sendHello(); $('coop').close(); renderLobby(); },
+  onMessage: handlePartner, onClose: partnerLeft, onError: coopFail
+});
+
+let stars = {};
+try {
+  const stored = JSON.parse(localStorage.getItem('buzo-stars-v1') || '{}');
+  if (stored && typeof stored === 'object' && !Array.isArray(stored)) stars = stored;
+} catch { /* Persistence is optional. */ }
+const LEVEL_TIPS = ['Fila central', 'Palabras del mar', 'Todo el teclado'];
+const starText = count => '★'.repeat(count) + '☆'.repeat(3 - count);
+function renderLevels() {
+  const box = $('levelCards'); box.replaceChildren();
+  LEVELS.forEach((level, index) => {
+    const selected = Number($('level').value) === index, earned = Math.min(3, Math.max(0, Number(stars[index]) || 0));
+    const card = document.createElement('button'); card.type = 'button'; card.className = `level-card ${selected ? 'selected' : ''}`;
+    card.setAttribute('role', 'radio'); card.setAttribute('aria-checked', String(selected));
+    card.setAttribute('aria-label', `Nivel ${index + 1}: ${LEVEL_TIPS[index]}. ${earned} de 3 estrellas`);
+    const title = document.createElement('strong'); title.textContent = `${index + 1} · ${LEVEL_TIPS[index]}`;
+    const name = document.createElement('small'); name.textContent = level.name;
+    const rating = document.createElement('span'); rating.className = 'level-stars'; rating.textContent = starText(earned);
+    card.append(title); card.append(name); card.append(rating);
+    card.disabled = isGuest();
+    card.onclick = () => { $('level').value = String(index); renderLevels(); showRecord(); };
+    box.append(card);
+  });
+}
 function recordKey() { return `${state.level}-${state.relaxed ? 'practice' : 'challenge'}`; }
 function showRecord() {
   const key = `${$('level').value}-${$('relaxed').checked ? 'practice' : 'challenge'}`;
   const best = records[key];
   $('record').textContent = best ? `Tu récord: ${best.points} puntos · ${best.depth} m de profundidad` : 'Tu primera expedición te espera.';
 }
+const TONES = { win: [[520, 880]], miss: [[240, 180]], shark: [[300, 120], [200, 90]], prize: [[523, 659], [659, 784], [784, 1047]] };
+let sound = true;
+try { sound = localStorage.getItem('buzo-sound-v1') !== 'off'; } catch { /* Persistence is optional. */ }
+function showSound() { $('soundButton').textContent = `Sonido: ${sound ? 'sí' : 'no'}`; $('soundButton').setAttribute('aria-pressed', String(sound)); }
 function beep(kind) {
   if (!sound) return;
   try {
     audio ||= new (window.AudioContext || window.webkitAudioContext)();
     void audio.resume();
-    const osc = audio.createOscillator(), gain = audio.createGain();
-    osc.connect(gain); gain.connect(audio.destination); osc.type = 'sine';
-    osc.frequency.setValueAtTime(kind === 'win' ? 520 : 240, audio.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(kind === 'win' ? 880 : 180, audio.currentTime + .15);
-    gain.gain.setValueAtTime(.06, audio.currentTime); gain.gain.exponentialRampToValueAtTime(.001, audio.currentTime + .2);
-    osc.start(); osc.stop(audio.currentTime + .22);
+    (TONES[kind] || TONES.win).forEach(([from, to], i) => {
+      const osc = audio.createOscillator(), gain = audio.createGain(), at = audio.currentTime + i * .13;
+      osc.connect(gain); gain.connect(audio.destination); osc.type = kind === 'shark' ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(from, at); osc.frequency.exponentialRampToValueAtTime(to, at + .15);
+      gain.gain.setValueAtTime(.06, at); gain.gain.exponentialRampToValueAtTime(.001, at + .2);
+      osc.start(at); osc.stop(at + .22);
+    });
   } catch { /* Audio is optional. */ }
+}
+function toast(text, kind = 'win') {
+  const el = $('toast'); el.textContent = text; el.className = `toast ${kind}`;
+  void el.offsetWidth; el.classList.add('show');
 }
 const rows = ['qwertyuiop', 'asdfghjklñ', 'zxcvbnm', ' '];
 for (const row of rows) {
@@ -90,8 +196,11 @@ function updateTargets() {
 }
 function hud() {
   $('depth').textContent = `${state.depth} m`;
-  $('scoreLabel').textContent = state.boss ? 'Pulpo' : 'Palabras';
-  $('score').textContent = state.boss ? `${BOSS_HITS - state.boss.hp} / ${BOSS_HITS}` : `${state.score} / ${MISSION_WORDS}`;
+  $('scoreLabel').textContent = state.boss ? 'Pulpo' : state.coop ? 'Equipo' : 'Palabras';
+  $('score').textContent = state.boss ? `${BOSS_HITS - state.boss.hp} / ${BOSS_HITS}` : `${state.score + state.partnerScore} / ${MISSION_WORDS}`;
+  $('partnerHud').hidden = !state.coop || ['welcome', 'results'].includes(state.mode);
+  $('partnerText').textContent = `Compañero: ${state.partnerScore} ${state.partnerScore === 1 ? 'palabra' : 'palabras'}`;
+  $('oxygenHud').style.left = state.coop ? '33%' : '50%';
   $('points').textContent = state.points;
   $('air').textContent = state.relaxed ? '∞' : `${state.oxygen}%`;
   $('air').setAttribute('aria-label', state.relaxed ? 'Oxígeno ilimitado' : `Oxígeno al ${state.oxygen} por ciento`);
@@ -120,15 +229,20 @@ function sync() {
   $('bossBanner').hidden = state.mode !== 'bossIntro';
   $('targetList').hidden = state.mode !== 'playing';
   updateWord(); updateTargets(); hud();
+  if (canType && !state.relaxed) {
+    if (state.oxygen <= 30 && !lowWarned) { lowWarned = true; toast('¡Poco oxígeno! Seguí escribiendo', 'miss'); }
+    else if (state.oxygen > 45) lowWarned = false;
+  }
 }
 function start() {
-  state = createRun(Number($('level').value), $('relaxed').checked);
+  state = createRun(Number($('level').value), $('relaxed').checked, Math.random, { coop: coopActive() });
+  sendHello(); syncClock = 0; emotes.length = 0;
   if (reducedMotion) state.diveTime = 1.5;
   $('welcome').hidden = true; $('results').hidden = true; $('pauseOverlay').hidden = true; $('targetList').hidden = false;
   $('pauseButton').disabled = false; $('pauseButton').textContent = 'Pausar';
   $('status').textContent = '¡Saltamos! Prepará los dedos en F y J.';
   $('feedback').textContent = 'Escribí para sumar. Cuidá tu oxígeno.';
-  targetSignature = 'reset'; sync();
+  targetSignature = 'reset'; lowWarned = false; $('toast').className = 'toast'; $('coach').hidden = true; sync();
 }
 function amount(value, kind, sign = '+') {
   const span = document.createElement('span'); span.className = 'reward-amount';
@@ -143,10 +257,11 @@ function showRewards(rewards) {
     const name = document.createElement('span'); name.textContent = label; div.append(name);
     if (coins) div.append(amount(coins, 'coin'));
     if (gems) div.append(amount(gems, 'gem'));
-    box.append(div);
+    div.style.animationDelay = `${box.children.length * .18}s`; box.append(div);
   };
   for (const item of rewards.items) if (item.coins || item.gems) row(item.label, item.coins, item.gems, item.label.includes('tiburon') ? 'bonus' : '');
   row('Total ganado', rewards.coins, rewards.gems, 'reward-total');
+  for (const id of ['walletCoinsWrap', 'walletGems']) { const chip = $(id); chip.classList.remove('bump'); void chip.offsetWidth; chip.classList.add('bump'); }
 }
 function finish() {
   if (state.won && state.mode === 'ended' && !reducedMotion) {
@@ -172,17 +287,34 @@ function finish() {
   if (!state.rewarded) {
     state.rewarded = computeRewards(state); wallet.coins += state.rewarded.coins; wallet.gems += state.rewarded.gems; saveWallet();
   }
-  showRewards(state.rewarded);
+  const earned = starsFor(state);
+  if (earned > (Number(stars[state.level]) || 0)) {
+    stars[state.level] = earned;
+    try { localStorage.setItem('buzo-stars-v1', JSON.stringify(stars)); } catch { /* Optional in private browsing. */ }
+  }
+  $('resultStars').hidden = !earned; $('resultStars').textContent = starText(earned);
+  $('resultStars').setAttribute('aria-label', `${earned} de 3 estrellas`);
+  showRewards(state.rewarded); if (state.rewarded.coins) beep(state.won ? 'prize' : 'win');
   $('oxygenHud').hidden = true;
-  $('nextButton').hidden = !state.won || state.level >= LEVELS.length - 1;
-  $('results').hidden = false; $('againButton').focus(); showRecord();
+  const guest = state.coop && isGuest();
+  $('againButton').hidden = guest; $('nextButton').hidden = guest || !state.won || state.level >= LEVELS.length - 1;
+  $('coopResult').hidden = !state.coop;
+  $('coopResult').textContent = `Entre los dos: ${state.score + state.partnerScore} palabras.${guest ? ' Esperando al anfitrión para jugar otra vez…' : ''}`;
+  $('results').hidden = false; (guest ? $('homeButton') : $('againButton')).focus(); showRecord();
 }
 $('typing').addEventListener('input', event => {
   if (event.isComposing) return;
-  const result = typeInRun(state, event.target.value);
+  const result = track(() => typeInRun(state, event.target.value));
   if (result.ignored) return;
+  if (result.bossHit && state.coop && coopActive()) room.send({ t: 'hit' });
+  if (!seenCoach) {
+    seenCoach = true; $('coach').hidden = true;
+    try { localStorage.setItem('buzo-seen-v1', '1'); } catch { /* Optional. */ }
+  }
   if (result.complete) {
     beep('win');
+    const praise = ['¡Genial!', '¡Muy bien!', '¡Así se hace!'][state.score % 3];
+    toast(result.bossHit ? `¡Tentáculo calmado! +${result.gained}` : state.streak >= 3 ? `¡Racha de ${state.streak}! +${result.gained}` : `${praise} +${result.gained}`);
     $('status').textContent = result.bossHit ? `¡Bien! +${result.gained} puntos. Quedan ${state.boss.hp} tentáculos por calmar.` : `¡Bien! +${result.gained} puntos. Bajaste a ${state.depth} metros.`;
     if (result.bossStarted) $('status').textContent = '¡Llegaste al naufragio! Otto custodia el tesoro. Encontraste una reserva de oxígeno.';
     $('feedback').textContent = state.relaxed ? '¡Seguí con la próxima palabra!' : 'Palabra completa: +3% de oxígeno.';
@@ -207,18 +339,54 @@ function resume() {
   sync(); if (['playing', 'boss'].includes(state.mode)) $('typing').focus();
 }
 function home() {
-  state = createRun(Number($('level').value), $('relaxed').checked); state.mode = 'welcome';
+  state = createRun(Number($('level').value), $('relaxed').checked); state.mode = 'welcome'; emotes.length = 0;
   $('results').hidden = true; $('pauseOverlay').hidden = true; $('welcome').hidden = false; $('targetList').hidden = true;
   $('typing').disabled = true; $('typing').value = ''; $('pauseButton').disabled = true;
-  $('diverConsole').hidden = true; $('bossHud').hidden = true; $('bossBanner').hidden = true;
+  $('diverConsole').hidden = true; $('bossHud').hidden = true; $('bossBanner').hidden = true; $('coach').hidden = true; renderLevels();
   $('status').textContent = '¿Listo para una nueva inmersión?'; $('wordDisplay').textContent = 'f j f j';
-  $('feedback').textContent = 'Escribí para sumar. Cuidá tu oxígeno.'; hud(); hint(null); showRecord(); $('startButton').focus();
+  $('feedback').textContent = 'Escribí para sumar. Cuidá tu oxígeno.'; hud(); hint(null); showRecord(); renderLobby(); $('startButton').focus();
 }
-$('nextButton').onclick = () => { $('level').value = String(state.level + 1); start(); };
-$('startButton').onclick = start; $('againButton').onclick = start; $('homeButton').onclick = home; $('exitButton').onclick = home;
+function launch() {
+  if (coopActive()) {
+    if (!room || room.role !== 'host') return;
+    room.send({ t: 'start', level: Number($('level').value), relaxed: $('relaxed').checked });
+  }
+  start();
+}
+$('nextButton').onclick = () => { $('level').value = String(state.level + 1); renderLevels(); launch(); };
+$('startButton').onclick = launch; $('againButton').onclick = launch;
+$('coopButton').onclick = () => { $('coopMenu').hidden = false; $('coopWait').hidden = true; $('coopMessage').textContent = ''; $('coop').showModal(); };
+$('hostButton').onclick = async () => {
+  $('coopMessage').textContent = 'Creando sala…';
+  try { const Peer = await loadPeer(); room = hostRoom(Peer, roomHandlers()); } catch { coopFail('load'); }
+};
+$('joinButton').onclick = async () => {
+  const code = normalizeCode($('codeInput').value);
+  if (code.length < 4) { $('coopMessage').textContent = 'El código tiene 4 letras.'; return; }
+  $('coopMessage').textContent = 'Conectando…';
+  try { const Peer = await loadPeer(); room = joinRoom(Peer, code, roomHandlers()); } catch { coopFail('load'); }
+};
+$('codeInput').addEventListener('input', () => { $('codeInput').value = normalizeCode($('codeInput').value); });
+$('cancelRoom').onclick = $('closeCoop').onclick = () => $('coop').close();
+$('coop').addEventListener('close', () => { if (room && !linked) { room.close(); room = null; renderLobby(); } });
+$('leaveRoom').onclick = leaveRoom;
+for (const emote of EMOTES) {
+  const button = document.createElement('button'); button.type = 'button'; button.textContent = emote;
+  button.setAttribute('aria-label', `Mandar ${emote}`);
+  button.onmousedown = event => event.preventDefault?.();
+  button.onclick = () => {
+    if (!coopActive()) return;
+    room.send({ t: 'emote', e: emote }); emotes.push({ who: 'me', text: emote, time: 0 });
+    if (['playing', 'boss'].includes(state.mode)) $('typing').focus();
+  };
+  $('emoteBar').append(button);
+} $('homeButton').onclick = home; $('exitButton').onclick = home;
 $('pauseButton').onclick = () => state.mode === 'paused' ? resume() : pause(); $('resumeButton').onclick = resume;
 $('level').onchange = showRecord; $('relaxed').onchange = showRecord;
-$('soundButton').onclick = () => { sound = !sound; $('soundButton').textContent = `Sonido: ${sound ? 'sí' : 'no'}`; $('soundButton').setAttribute('aria-pressed', String(sound)); if (sound) beep('win'); };
+$('soundButton').onclick = () => {
+  sound = !sound; showSound(); if (sound) beep('win');
+  try { localStorage.setItem('buzo-sound-v1', sound ? 'on' : 'off'); } catch { /* Optional. */ }
+};
 $('guideButton').onclick = () => { const open = $('handGuide').hidden; $('handGuide').hidden = !open; $('guideButton').setAttribute('aria-expanded', String(open)); $('guideButton').textContent = open ? 'Ocultar posición de las manos' : 'Ver posición de las manos'; };
 $('helpButton').onclick = () => { pause(); $('help').showModal(); };
 $('closeHelp').onclick = $('helpReady').onclick = () => $('help').close();
@@ -266,17 +434,24 @@ function shopCard(item, kind) {
   card.append(preview); card.append(title); card.append(blurb); card.append(price); card.append(button);
   return card;
 }
+let shopTab = 'skins';
 function renderShop() {
   $('shopCoins').textContent = wallet.coins; $('shopGems').textContent = wallet.gems;
+  const view = $('shopPreview').getContext('2d');
+  if (view) { view.clearRect(0, 0, 400, 260); view.fillStyle = '#0a6a7c'; view.fillRect(0, 0, 400, 260); drawDiver(view, 190, 160, 1.15, 0, 0, wallet.equipped, wallet.gear); }
+  $('shopTabs').replaceChildren();
+  for (const tab of [{ id: 'skins', title: 'Trajes' }, ...SLOTS.map(slot => ({ id: slot.id, title: slot.title }))]) {
+    const button = document.createElement('button'); button.type = 'button'; button.textContent = tab.title;
+    button.className = `shop-tab ${tab.id === shopTab ? 'selected' : ''}`;
+    button.setAttribute('role', 'tab'); button.setAttribute('aria-selected', String(tab.id === shopTab));
+    button.onclick = () => { shopTab = tab.id; renderShop(); };
+    $('shopTabs').append(button);
+  }
   $('skinGrid').replaceChildren();
-  const section = (heading, items, kind) => {
-    const title = document.createElement('h3'); title.className = 'shop-section'; title.textContent = heading; $('skinGrid').append(title);
-    const grid = document.createElement('div'); grid.className = 'skin-grid';
-    for (const item of items) grid.append(shopCard(item, kind));
-    $('skinGrid').append(grid);
-  };
-  section('Trajes', SKINS, 'skin');
-  for (const slot of SLOTS) section(slot.title, ACCESSORIES.filter(item => item.slot === slot.id), 'gear');
+  const grid = document.createElement('div'); grid.className = 'skin-grid';
+  if (shopTab === 'skins') for (const skin of SKINS) grid.append(shopCard(skin, 'skin'));
+  else for (const item of ACCESSORIES.filter(accessory => accessory.slot === shopTab)) grid.append(shopCard(item, 'gear'));
+  $('skinGrid').append(grid);
 }
 function openShop() { pause(); $('shopMessage').textContent = ''; renderShop(); $('shop').showModal(); }
 $('shopButton').onclick = $('resultShopButton').onclick = openShop;
@@ -334,7 +509,8 @@ function draw() {
     shark(width * .85, height * .57, width < 500 ? .45 : .8, 'mar');
     return;
   }
-  const diverX = width * .5, diverY = height * .53;
+  const diverFrac = state.coop ? .33 : .5;
+  const diverX = width * diverFrac, diverY = height * .53;
   const scale = width < 500 ? .6 : .9;
   if (diving) {
     const progress = state.diveTime / 1.6;
@@ -367,10 +543,21 @@ function draw() {
   const bob = Math.sin(t * 1.5) * 4;
   drawDiver(ctx, diverX, diverY + bob, scale, t, state.visualDepth, wallet.equipped, wallet.gear);
   $('oxygenHud').style.top = `${diverY + bob - 82 * scale - 43}px`;
+  if (state.coop) {
+    const px = width * .55, py = diverY + Math.sin(t * 1.5 + 2) * 4, mate = partner || { skin: 'clasico', gear: {} };
+    drawDiver(ctx, px, py, scale, t, state.visualDepth, mate.skin, mate.gear);
+    ctx.textAlign = 'center'; ctx.font = 'bold 12px Trebuchet MS'; ctx.fillStyle = '#e6f5f4';
+    ctx.fillText('Tu compañero', px, py + 100 * scale);
+    for (const emote of emotes) {
+      ctx.globalAlpha = Math.max(0, 1 - emote.time / 2); ctx.font = '30px Trebuchet MS';
+      ctx.fillText(emote.text, emote.who === 'me' ? diverX : px, py - 130 * scale - (reducedMotion ? 0 : emote.time * 30));
+    }
+    ctx.globalAlpha = 1;
+  }
   const laneY = [.23, .42, .63, .83];
   for (const enemy of state.sharks) {
     const startX = width * (enemy.side === 'left' ? .1 : .9);
-    const endX = width * (enemy.side === 'left' ? .44 : .56);
+    const endX = width * (enemy.side === 'left' ? diverFrac - .06 : diverFrac + .06);
     let x = startX + (endX - startX) * enemy.progress;
     let y = height * laneY[enemy.lane] + (diverY - height * laneY[enemy.lane]) * enemy.progress;
     const fleeing = Boolean(enemy.departure);
@@ -404,27 +591,34 @@ function frame(now) {
     if (state.treasureTime >= 3) finish();
   }
   const targetBefore = state.targetId;
-  const events = document.hidden ? [] : tickRun(state, dt);
+  for (const emote of emotes) emote.time += dt;
+  while (emotes.length && emotes[0].time >= 2) emotes.shift();
+  if (!document.hidden && coopActive() && room.role === 'host' && state.coop && !state.relaxed && ['playing', 'boss'].includes(state.mode) && (syncClock += dt) >= 1) {
+    syncClock = 0; room.send({ t: 'sync', o: state.oxygen });
+  }
+  const events = document.hidden ? [] : track(() => tickRun(state, dt));
   if (events.length || targetBefore !== state.targetId) {
     sync();
     if (events.includes('bossReady')) {
+      toast('¡Batalla final contra Otto!');
       $('status').textContent = '¡Batalla final! Escribí ocho frases con su espacio. ¡El reloj no se frena!';
       $('feedback').textContent = 'Dos palabras y un espacio calman un tentáculo.'; $('typing').focus();
     }
     if (events.includes('bossAttack')) {
-      beep('miss'); $('status').textContent = '¡Otto agitó sus tentáculos! −18% de oxígeno.';
+      beep('miss'); toast(`¡Otto atacó! −${bossAttackDamage(state)}% O₂`, 'miss'); $('status').textContent = `¡Otto agitó sus tentáculos! −${bossAttackDamage(state)}% de oxígeno.`;
       $('feedback').textContent = 'Tu frase sigue intacta. ¡Seguí escribiendo!';
     }
     if (events.includes('ready')) {
+      if (!seenCoach) $('coach').hidden = false;
       $('status').textContent = 'Elegí un tiburón escribiendo la primera letra de su palabra.';
       $('typing').focus();
     }
     if (events.includes('collision')) {
-      beep('miss'); $('status').textContent = '¡Un tiburón llegó! −22% de oxígeno. Seguí escribiendo.';
+      beep('shark'); toast('¡Un tiburón llegó! −22% O₂', 'miss'); $('status').textContent = '¡Un tiburón llegó! −22% de oxígeno. Seguí escribiendo.';
     }
   }
   if (state.boss) updateBossHud();
   if (state.mode === 'ended') { hud(); finish(); }
   draw(); requestAnimationFrame(frame);
 }
-resize(); saveWallet(); showRecord(); hud(); requestAnimationFrame(frame);
+resize(); saveWallet(); showSound(); renderLobby(); showRecord(); hud(); requestAnimationFrame(frame);

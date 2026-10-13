@@ -196,3 +196,9 @@ test('shop: accessories are bought per slot, equipped and removed', () => {
   assert.deepEqual(clean.gear, { mask: null, fins: null, head: null, hand: 'guitarra' }); assert.equal(clean.equipped, 'clasico');
   assert.equal(new Set(ACCESSORIES.map(item => item.id)).size, ACCESSORIES.length);
 });
+
+import { starsFor } from '../engine.js';
+test('stars: fewer shark hits earn more stars, only for won challenge runs', () => {
+  assert.equal(starsFor(won()), 3); assert.equal(starsFor(won({ collisions: 2 })), 2); assert.equal(starsFor(won({ collisions: 3 })), 1);
+  assert.equal(starsFor(won({ won: false })), 0); assert.equal(starsFor(won({ relaxed: true })), 0);
+});

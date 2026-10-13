@@ -1,3 +1,4 @@
+import { skinById } from './skins.js';
 // Canvas-native illustrations: no downloads, textures or WebGL dependencies.
 // z = 0 is far away, z = 1 is near the camera (2.5D painter's-order depth).
 const TAU = Math.PI * 2;
@@ -65,24 +66,29 @@ export function drawBoat(ctx, x, waterY, scale, time = 0) {
   ctx.restore();
 }
 
-export function drawDiver(ctx, x, y, scale, time = 0, depth = 0) {
+export function drawDiver(ctx, x, y, scale, time = 0, depth = 0, skinId = 'clasico', gear = {}) {
+  const skin = skinById(skinId), c = skin.palette;
+  const finStyle = { 'patas-rana': { fin: '#6cc04a', finDark: '#4a9a32', finLine: '#2f6a1f' }, 'patas-flamenco': { fin: '#ff8fb8', finDark: '#e66a9a', finLine: '#a8416b' }, 'patas-fuego': { fin: '#ff9a3c', finDark: '#e0501f', finLine: '#8f2c10' } }[gear.fins] || c;
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale); ctx.rotate(-.12);
   // Soft light, not a bright cone behind the words.
   const beam = ctx.createLinearGradient(53, 5, 190, 45);
   beam.addColorStop(0, depth > 120 ? '#e8f8c223' : '#e8f8c214'); beam.addColorStop(1, '#e8f8c200');
   polygon(ctx, [[53, 3], [198, -15], [185, 73]], beam);
   const kick = Math.sin(time * 2) * 7;
-  ctx.strokeStyle = '#11334a'; ctx.lineWidth = 18; ctx.lineCap = 'round';
+  ctx.strokeStyle = c.legFar; ctx.lineWidth = 18; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(-5, 21); ctx.lineTo(-36, 44 + kick); ctx.lineTo(-64, 43 + kick); ctx.stroke();
-  ctx.strokeStyle = '#214c60'; ctx.lineWidth = 17;
+  ctx.strokeStyle = c.legNear; ctx.lineWidth = 17;
   ctx.beginPath(); ctx.moveTo(10, 22); ctx.lineTo(-2, 64 - kick); ctx.lineTo(-35, 77 - kick); ctx.stroke();
   // Wide rubber fins, with grooves and a bright tip.
   for (const [fx, fy, rotation] of [[-63, 43 + kick, -.2], [-34, 78 - kick, .2]]) {
     ctx.save(); ctx.translate(fx, fy); ctx.rotate(rotation);
-    polygon(ctx, [[6, -10], [-17, -13], [-42, -22], [-47, 4], [-14, 12], [5, 8]], '#ffc85b');
-    polygon(ctx, [[-38, -19], [-47, 4], [-39, 6], [-32, -17]], '#efab42');
-    line(ctx, [[-10, -3], [-34, -10]], '#bb8b35', 1.5);
-    line(ctx, [[-10, 3], [-36, 0]], '#bb8b35', 1.5); ctx.restore();
+    polygon(ctx, [[6, -10], [-17, -13], [-42, -22], [-47, 4], [-14, 12], [5, 8]], finStyle.fin);
+    polygon(ctx, [[-38, -19], [-47, 4], [-39, 6], [-32, -17]], finStyle.finDark);
+    line(ctx, [[-10, -3], [-34, -10]], finStyle.finLine, 1.5);
+    line(ctx, [[-10, 3], [-36, 0]], finStyle.finLine, 1.5);
+    if (gear.fins === 'patas-rana') for (const [tx, ty] of [[-46, -16], [-50, -6], [-47, 4]]) ellipse(ctx, tx, ty, 6, 5, finStyle.fin);
+    if (gear.fins === 'patas-fuego') polygon(ctx, [[-44, -10], [-58, -2], [-48, 0], [-56, 10], [-42, 4]], '#ffd34f');
+    ctx.restore();
   }
   // Cylinder, valve and straps, tucked behind the shoulder.
   const tank = ctx.createLinearGradient(-43, 0, -18, 0);
@@ -91,29 +97,87 @@ export function drawDiver(ctx, x, y, scale, time = 0, depth = 0) {
   rounded(ctx, -40, -17, 22, 7, 2, '#295366'); rounded(ctx, -40, 6, 22, 7, 2, '#295366');
   rounded(ctx, -35, -47, 12, 9, 3, '#ffe0a2');
   const suit = ctx.createLinearGradient(-20, 0, 25, 0);
-  suit.addColorStop(0, '#12344a'); suit.addColorStop(.6, '#29576b'); suit.addColorStop(1, '#163f50');
+  suit.addColorStop(0, c.suit0); suit.addColorStop(.6, c.suit1); suit.addColorStop(1, c.suit2);
   ellipse(ctx, 0, -3, 24, 39, suit);
-  polygon(ctx, [[-18, -27], [-9, -36], [10, -35], [20, -24], [13, -15], [-10, -16]], '#f5c75f');
+  polygon(ctx, [[-18, -27], [-9, -36], [10, -35], [20, -24], [13, -15], [-10, -16]], c.collar);
   line(ctx, [[-9, -13], [-7, 24]], '#72b6bc', 2);
   line(ctx, [[-20, 15], [19, 15]], '#0d293b', 6);
   rounded(ctx, -3, 11, 10, 9, 2, '#d0e4d9');
   line(ctx, [[11, -15], [13, 5]], '#0d293b', 4);
   ellipse(ctx, 14, 2, 6, 7, '#edf6e4'); ellipse(ctx, 14, 2, 3, 4, '#548c91');
   line(ctx, [[14, 2], [16, -1]], '#ef987f', 1.5);
+  if (gear.hand === 'guitarra') {
+    ctx.save(); ctx.translate(18, 16); ctx.rotate(-.75);
+    line(ctx, [[18, 0], [66, 0]], '#6a3f26', 6); rounded(ctx, 62, -6, 14, 12, 3, '#3b2417');
+    ellipse(ctx, -9, 0, 19, 15, '#c9843f'); ellipse(ctx, 11, 0, 13, 10, '#c9843f');
+    ellipse(ctx, 0, 0, 7, 7, '#3b2417'); rounded(ctx, -22, -3, 8, 6, 2, '#3b2417');
+    for (const y of [-2, 0, 2]) line(ctx, [[-14, y], [64, y]], '#f3e8c6', .8);
+    ctx.restore();
+  }
   // Forward arm, gloved hand and torch.
-  ctx.strokeStyle = '#214c60'; ctx.lineWidth = 12; ctx.beginPath();
+  ctx.strokeStyle = c.arm; ctx.lineWidth = 12; ctx.beginPath();
   ctx.moveTo(15, -18); ctx.lineTo(36, 9); ctx.lineTo(58, 3); ctx.stroke();
-  ellipse(ctx, 56, 3, 8, 6, '#f4c465');
+  ellipse(ctx, 56, 3, 8, 6, c.glove);
   rounded(ctx, 53, -2, 18, 9, 3, '#0d2e40'); ellipse(ctx, 71, 2, 3, 5, '#d4f3bf');
+  if (gear.hand === 'pato') {
+    ellipse(ctx, 66, -4, 12, 9, '#ffd34f'); ellipse(ctx, 74, -16, 7, 7, '#ffd34f');
+    polygon(ctx, [[79, -17], [88, -14], [79, -12]], '#ef8f43'); ellipse(ctx, 75, -18, 1.4, 1.4, '#1c1c26');
+    polygon(ctx, [[56, -6], [50, -10], [55, -1]], '#ffd34f');
+  }
+  if (gear.hand === 'tridente') {
+    line(ctx, [[48, 52], [66, -92]], '#d9b24a', 4);
+    line(ctx, [[54, -88], [78, -92]], '#d9b24a', 4);
+    for (const [px, py] of [[55, -88], [66, -92], [78, -92]]) polygon(ctx, [[px - 3, py], [px, py - 18], [px + 3, py]], '#f3d77a');
+  }
   // Neoprene hood and face visible through oversized goggles.
-  ellipse(ctx, 10, -47, 27, 28, '#173b50'); ellipse(ctx, 20, -46, 20, 21, '#edb18b');
-  line(ctx, [[-12, -49], [6, -49]], '#ffdb70', 7);
-  rounded(ctx, 2, -63, 44, 28, 11, '#ffd572');
+  ellipse(ctx, 10, -47, 27, 28, c.hood); ellipse(ctx, 20, -46, 20, 21, '#edb18b');
+  line(ctx, [[-12, -49], [6, -49]], c.band, 7);
+  const hat = gear.head;
+  if (skin.extra === 'bandana' && !hat) {
+    polygon(ctx, [[-15, -62], [28, -72], [34, -62], [-12, -50]], '#d9534f');
+    polygon(ctx, [[-15, -56], [-34, -48], [-30, -41], [-13, -47]], '#d9534f');
+    for (const dot of [-4, 8, 19]) ellipse(ctx, dot, -62, 1.6, 1.6, '#fff1d5');
+  }
+  if (hat === 'sombrero-copa') {
+    rounded(ctx, -16, -78, 52, 8, 4, '#1c1c26'); rounded(ctx, -5, -114, 30, 40, 4, '#26263a');
+    rounded(ctx, -5, -86, 30, 8, 1, '#d9534f');
+  }
+  if (hat === 'sombrero-vaquero') {
+    polygon(ctx, [[-4, -74], [-1, -100], [8, -94], [16, -100], [24, -74]], '#bf7e4a');
+    ctx.fillStyle = '#a86a3c'; ctx.beginPath(); ctx.moveTo(-32, -66); ctx.quadraticCurveTo(-8, -86, 10, -74);
+    ctx.quadraticCurveTo(30, -86, 52, -66); ctx.quadraticCurveTo(10, -60, -32, -66); ctx.fill();
+    line(ctx, [[-2, -78], [22, -78]], '#6e4222', 3);
+  }
+  if (hat === 'gorro-cumple') {
+    polygon(ctx, [[-6, -72], [10, -116], [26, -72]], '#ef8f83');
+    for (const [x1, y1, x2, y2] of [[-1, -86, 21, -90], [3, -100, 17, -103]]) line(ctx, [[x1, y1], [x2, y2]], '#fff1d5', 3);
+    ellipse(ctx, 10, -117, 5, 5, '#ffd34f');
+  }
+  if (hat === 'maceta') {
+    polygon(ctx, [[-4, -88], [24, -88], [20, -68], [0, -68]], '#c56b45'); rounded(ctx, -6, -92, 32, 6, 2, '#d98258');
+    line(ctx, [[10, -92], [10, -112]], '#5fae52', 3); ellipse(ctx, 4, -102, 6, 3, '#5fae52');
+    for (let i = 0; i < 5; i++) ellipse(ctx, 10 + Math.cos(i * 1.256) * 7, -118 + Math.sin(i * 1.256) * 7, 4.5, 4.5, '#ff8fb8');
+    ellipse(ctx, 10, -118, 4, 4, '#ffd34f');
+  }
+  if (skin.extra === 'crown' && !hat) {
+    polygon(ctx, [[-6, -70], [-8, -92], [3, -82], [11, -97], [19, -82], [30, -92], [28, -70]], '#ffd34f');
+    line(ctx, [[-6, -73], [28, -73]], '#c99a2a', 3);
+    for (const [gx, gy, color] of [[11, -80, '#ef8f83'], [-1, -76, '#8dd8bd'], [23, -76, '#8dd8bd']]) ellipse(ctx, gx, gy, 2.4, 2.4, color);
+  }
+  const mask = { 'mascara-sol': ['#1c1c26', '#4a4f58', '#2a2d34', '#0e1114'], 'mascara-corazon': ['#e86a92', '#ffe3ec', '#ffb0c9', '#f27aa3'], 'mascara-robot': ['#6b7a8a', '#d6ffd0', '#7fe39a', '#2f9f58'] }[gear.mask] || [c.frame, '#cbfaf1', '#7bc7d0', '#347c99'];
+  rounded(ctx, 2, -63, 44, 28, 11, mask[0]);
   const glass = ctx.createLinearGradient(7, -59, 38, -34);
-  glass.addColorStop(0, '#cbfaf1'); glass.addColorStop(.4, '#7bc7d0'); glass.addColorStop(1, '#347c99');
+  glass.addColorStop(0, mask[1]); glass.addColorStop(.4, mask[2]); glass.addColorStop(1, mask[3]);
   rounded(ctx, 7, -59, 34, 20, 7, glass);
   line(ctx, [[23, -59], [23, -40]], '#f5d483', 2);
-  ellipse(ctx, 18, -49, 2, 2.5, '#164858'); ellipse(ctx, 30, -49, 2, 2.5, '#164858');
+  if (gear.mask === 'mascara-corazon') {
+    for (const hx of [16, 31]) { ctx.fillStyle = '#d9366b'; ctx.beginPath(); ctx.moveTo(hx, -43); ctx.bezierCurveTo(hx - 11, -52, hx - 5, -58, hx, -52); ctx.bezierCurveTo(hx + 5, -58, hx + 11, -52, hx, -43); ctx.fill(); }
+  } else if (gear.mask === 'mascara-robot') {
+    for (const y of [-55, -50, -45]) line(ctx, [[10, y], [38, y]], '#2f9f58', 1);
+    rounded(ctx, 13, -52, 8, 4, 1, '#1d6b3a'); rounded(ctx, 27, -52, 8, 4, 1, '#1d6b3a');
+  } else if (gear.mask !== 'mascara-sol') {
+    ellipse(ctx, 18, -49, 2, 2.5, '#164858'); ellipse(ctx, 30, -49, 2, 2.5, '#164858');
+  }
   line(ctx, [[11, -55], [18, -55]], '#f3fff6', 2);
   rounded(ctx, 26, -34, 14, 10, 4, '#13394c');
   ctx.strokeStyle = '#0e2b3c'; ctx.lineWidth = 5; ctx.beginPath();

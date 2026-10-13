@@ -44,10 +44,27 @@ export function createRun(level, relaxed = false, random = Math.random) {
   return {
     mode: 'diving', level, relaxed, random, diveTime: 0, elapsed: 0,
     score: 0, points: 0, oxygen: 100, depth: 0, visualDepth: 0,
-    attempts: 0, mistakes: 0, streak: 0, bestStreak: 0, wave: 1, sharks: [],
+    attempts: 0, mistakes: 0, collisions: 0, streak: 0, bestStreak: 0, wave: 1, sharks: [],
     deck: makeDeck(level, random), cursor: 0, nextId: 1,
     spawnIn: 0, targetId: null, input: '', effects: [], won: false, boss: null
   };
+}
+// Coins and gems earned when a run ends. Bonuses reward a clean dive and only
+// apply to a finished level in challenge mode (practice sharks never move).
+export function computeRewards(state) {
+  const items = [];
+  const add = (label, coins, gems = 0) => items.push({ label, coins, gems });
+  if (state.relaxed) {
+    add('Práctica sin apuro', state.score * 2);
+  } else if (!state.won) {
+    add('Palabras escritas', state.score * 3);
+  } else {
+    add('Nivel completado', 60 + state.level * 30 + Math.floor(state.points / 40), 1 + state.level);
+    if (state.collisions === 0) add('¡Ningún tiburón te tocó!', 120, 3);
+    else if (state.collisions <= 2) add('Pocos tiburones te alcanzaron', 50, 1);
+    if (accuracy(state.attempts, state.mistakes) >= 95) add('Letras casi perfectas', 50, 0);
+  }
+  return { items, coins: items.reduce((sum, item) => sum + item.coins, 0), gems: items.reduce((sum, item) => sum + item.gems, 0) };
 }
 export function activeSharks(state) { return state.sharks.filter(shark => !shark.departure); }
 export function capacity(state) { return Math.min(4, 1 + Math.floor(state.score / 4)); }
@@ -200,7 +217,7 @@ export function tickRun(state, dt) {
     if (!state.relaxed) shark.progress = Math.min(1, shark.progress + dt / shark.duration);
     if (shark.progress >= 1) {
       shark.departure = 'collision'; shark.exitTime = 0;
-      state.oxygen = Math.max(0, state.oxygen - OXYGEN.collision); state.streak = 0;
+      state.oxygen = Math.max(0, state.oxygen - OXYGEN.collision); state.streak = 0; state.collisions++;
       state.effects.push({ text: `−${OXYGEN.collision}% O₂`, time: 0, kind: 'miss' });
       events.push('collision');
     }

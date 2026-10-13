@@ -1,5 +1,6 @@
 import { drawBoat, drawDiver, drawOceanBackdrop, drawOceanForeground, drawShipwreck, drawOctopus } from './visuals.js';
-import { LEVELS, MISSION_WORDS, BOSS_HITS, currentWord, fingerFor, accuracy, createRun, activeSharks, chooseTarget, typeInRun, tickRun } from './engine.js';
+import { LEVELS, MISSION_WORDS, BOSS_HITS, currentWord, fingerFor, accuracy, computeRewards, createRun, activeSharks, chooseTarget, typeInRun, tickRun } from './engine.js';
+import { SKINS, SLOTS, ACCESSORIES, sanitizeWallet, canAfford, buySkin, equipSkin, equipGear } from './skins.js';
 const $ = id => document.getElementById(id);
 const canvas = $('scene'), ctx = canvas.getContext('2d');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -11,6 +12,13 @@ try {
   const stored = JSON.parse(localStorage.getItem('buzo-records-v4') || '{}');
   if (stored && typeof stored === 'object' && !Array.isArray(stored)) records = stored;
 } catch { /* Persistence is optional. */ }
+let wallet = sanitizeWallet(null);
+try { wallet = sanitizeWallet(JSON.parse(localStorage.getItem('buzo-wallet-v1') || 'null')); } catch { /* Persistence is optional. */ }
+function saveWallet() {
+  try { localStorage.setItem('buzo-wallet-v1', JSON.stringify(wallet)); } catch { /* Optional in private browsing. */ }
+  $('walletCoins').textContent = wallet.coins; $('walletGems').textContent = wallet.gems;
+}
+const modalOpen = () => $('help').open || $('shop').open;
 function recordKey() { return `${state.level}-${state.relaxed ? 'practice' : 'challenge'}`; }
 function showRecord() {
   const key = `${$('level').value}-${$('relaxed').checked ? 'practice' : 'challenge'}`;
@@ -122,6 +130,24 @@ function start() {
   $('feedback').textContent = 'Escribí para sumar. Cuidá tu oxígeno.';
   targetSignature = 'reset'; sync();
 }
+function amount(value, kind, sign = '+') {
+  const span = document.createElement('span'); span.className = 'reward-amount';
+  const icon = document.createElement('i'); icon.className = kind; icon.setAttribute('aria-hidden', 'true');
+  const number = document.createElement('strong'); number.textContent = `${sign}${value}`;
+  span.append(icon); span.append(number); return span;
+}
+function showRewards(rewards) {
+  const box = $('rewards'); box.replaceChildren();
+  const row = (label, coins, gems, className = '') => {
+    const div = document.createElement('div'); div.className = `reward-row ${className}`;
+    const name = document.createElement('span'); name.textContent = label; div.append(name);
+    if (coins) div.append(amount(coins, 'coin'));
+    if (gems) div.append(amount(gems, 'gem'));
+    box.append(div);
+  };
+  for (const item of rewards.items) if (item.coins || item.gems) row(item.label, item.coins, item.gems, item.label.includes('tiburon') ? 'bonus' : '');
+  row('Total ganado', rewards.coins, rewards.gems, 'reward-total');
+}
 function finish() {
   if (state.won && state.mode === 'ended' && !reducedMotion) {
     state.mode = 'celebrating'; state.treasureTime = 0;
@@ -143,6 +169,10 @@ function finish() {
     records[key] = { points: state.points, depth: state.depth, accuracy: acc };
     try { localStorage.setItem('buzo-records-v4', JSON.stringify(records)); } catch { /* Optional in private browsing. */ }
   }
+  if (!state.rewarded) {
+    state.rewarded = computeRewards(state); wallet.coins += state.rewarded.coins; wallet.gems += state.rewarded.gems; saveWallet();
+  }
+  showRewards(state.rewarded);
   $('oxygenHud').hidden = true;
   $('nextButton').hidden = !state.won || state.level >= LEVELS.length - 1;
   $('results').hidden = false; $('againButton').focus(); showRecord();
@@ -172,7 +202,7 @@ function pause() {
   $('pauseOverlay').hidden = false; $('typing').disabled = true; $('pauseButton').textContent = 'Seguir'; $('resumeButton').focus();
 }
 function resume() {
-  if (state.mode !== 'paused' || $('help').open) return;
+  if (state.mode !== 'paused' || modalOpen()) return;
   state.mode = pausedMode; $('pauseOverlay').hidden = true; $('pauseButton').textContent = 'Pausar';
   sync(); if (['playing', 'boss'].includes(state.mode)) $('typing').focus();
 }
@@ -192,8 +222,68 @@ $('soundButton').onclick = () => { sound = !sound; $('soundButton').textContent 
 $('guideButton').onclick = () => { const open = $('handGuide').hidden; $('handGuide').hidden = !open; $('guideButton').setAttribute('aria-expanded', String(open)); $('guideButton').textContent = open ? 'Ocultar posición de las manos' : 'Ver posición de las manos'; };
 $('helpButton').onclick = () => { pause(); $('help').showModal(); };
 $('closeHelp').onclick = $('helpReady').onclick = () => $('help').close();
+function shopCard(item, kind) {
+  const isSkin = kind === 'skin';
+  const owned = wallet.owned.includes(item.id);
+  const equipped = isSkin ? wallet.equipped === item.id : wallet.gear[item.slot] === item.id;
+  const card = document.createElement('div'); card.className = `skin-card ${equipped ? 'equipped' : ''}`;
+  const preview = document.createElement('canvas'); preview.width = 400; preview.height = 260;
+  preview.setAttribute('aria-hidden', 'true');
+  const pctx = preview.getContext('2d');
+  if (pctx) {
+    pctx.fillStyle = '#0a6a7c'; pctx.fillRect(0, 0, 400, 260);
+    drawDiver(pctx, 190, 160, 1.15, 0, 0, isSkin ? item.id : wallet.equipped, isSkin ? wallet.gear : { ...wallet.gear, [item.slot]: item.id });
+  }
+  const title = document.createElement('h3'); title.textContent = item.name;
+  const blurb = document.createElement('p'); blurb.textContent = item.blurb;
+  const price = document.createElement('div'); price.className = 'skin-price';
+  if (owned) price.textContent = equipped ? 'Puesto' : 'Tuyo';
+  else if (!item.price.coins && !item.price.gems) price.textContent = 'Gratis';
+  else {
+    if (item.price.coins) { const part = document.createElement('span'); part.append(amount(item.price.coins, 'coin', '')); price.append(part); }
+    if (item.price.gems) { const part = document.createElement('span'); part.append(amount(item.price.gems, 'gem', '')); price.append(part); }
+  }
+  const button = document.createElement('button');
+  const done = text => { saveWallet(); renderShop(); $('shopMessage').textContent = text; };
+  if (owned) {
+    if (isSkin) {
+      button.textContent = equipped ? 'Equipado' : 'Equipar'; button.disabled = equipped;
+      button.onclick = () => { equipSkin(wallet, item.id); done(`Ahora usás el ${item.name.toLowerCase()}.`); };
+    } else {
+      button.textContent = equipped ? 'Quitar' : 'Equipar';
+      button.onclick = () => { equipGear(wallet, item.slot, equipped ? null : item.id); done(equipped ? `Te sacaste: ${item.name.toLowerCase()}.` : `Te pusiste: ${item.name.toLowerCase()}.`); };
+    }
+  } else {
+    const ok = canAfford(wallet, item);
+    button.textContent = ok ? 'Comprar' : 'Te falta tesoro'; button.disabled = !ok;
+    button.setAttribute('aria-label', `${button.textContent}: ${item.name}`);
+    button.onclick = () => {
+      if (!buySkin(wallet, item.id)) return;
+      if (isSkin) equipSkin(wallet, item.id); else equipGear(wallet, item.slot, item.id);
+      done(`¡Compraste ${item.name.toLowerCase()} y ya lo tenés puesto!`);
+    };
+  }
+  card.append(preview); card.append(title); card.append(blurb); card.append(price); card.append(button);
+  return card;
+}
+function renderShop() {
+  $('shopCoins').textContent = wallet.coins; $('shopGems').textContent = wallet.gems;
+  $('skinGrid').replaceChildren();
+  const section = (heading, items, kind) => {
+    const title = document.createElement('h3'); title.className = 'shop-section'; title.textContent = heading; $('skinGrid').append(title);
+    const grid = document.createElement('div'); grid.className = 'skin-grid';
+    for (const item of items) grid.append(shopCard(item, kind));
+    $('skinGrid').append(grid);
+  };
+  section('Trajes', SKINS, 'skin');
+  for (const slot of SLOTS) section(slot.title, ACCESSORIES.filter(item => item.slot === slot.id), 'gear');
+}
+function openShop() { pause(); $('shopMessage').textContent = ''; renderShop(); $('shop').showModal(); }
+$('shopButton').onclick = $('resultShopButton').onclick = openShop;
+$('closeShop').onclick = () => $('shop').close();
+$('shop').addEventListener('close', () => { if (state.mode === 'paused') $('resumeButton').focus(); });
 $('help').addEventListener('close', () => { if (state.mode === 'paused') $('resumeButton').focus(); });
-document.addEventListener('keydown', event => { if (event.key === 'Escape' && !$('help').open) { event.preventDefault(); state.mode === 'paused' ? resume() : pause(); } });
+document.addEventListener('keydown', event => { if (event.key === 'Escape' && !modalOpen()) { event.preventDefault(); state.mode === 'paused' ? resume() : pause(); } });
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
 window.addEventListener('blur', pause);
 function resize() {
@@ -240,7 +330,7 @@ function draw() {
     ctx.strokeStyle = '#e3f6ed'; ctx.lineWidth = 2; ctx.beginPath();
     ctx.moveTo(0, 110); ctx.lineTo(width, 110); ctx.stroke();
     drawBoat(ctx, width * .73, 103, Math.min(.85, width / 750), t);
-    drawDiver(ctx, width * .66, height * .53 + Math.sin(t * 1.5) * 4, width < 500 ? .65 : 1.05, t, state.visualDepth);
+    drawDiver(ctx, width * .66, height * .53 + Math.sin(t * 1.5) * 4, width < 500 ? .65 : 1.05, t, state.visualDepth, wallet.equipped, wallet.gear);
     shark(width * .85, height * .57, width < 500 ? .45 : .8, 'mar');
     return;
   }
@@ -258,7 +348,7 @@ function draw() {
       drawBoat(ctx, diverX - 108 * boatScale, waterline - 7, boatScale, t);
     }
     const entryY = -80 + (diverY + 80) * eased;
-    drawDiver(ctx, diverX, entryY, scale, t);
+    drawDiver(ctx, diverX, entryY, scale, t, 0, wallet.equipped, wallet.gear);
     $('oxygenHud').style.top = `${Math.max(8, entryY - 82 * scale - 43)}px`;
     ctx.font = 'bold 24px Trebuchet MS'; ctx.textAlign = 'center'; ctx.fillStyle = '#f0f7f4';
     ctx.fillText('¡Al agua!', width / 2, height * .85);
@@ -275,7 +365,7 @@ function draw() {
     });
   }
   const bob = Math.sin(t * 1.5) * 4;
-  drawDiver(ctx, diverX, diverY + bob, scale, t, state.visualDepth);
+  drawDiver(ctx, diverX, diverY + bob, scale, t, state.visualDepth, wallet.equipped, wallet.gear);
   $('oxygenHud').style.top = `${diverY + bob - 82 * scale - 43}px`;
   const laneY = [.23, .42, .63, .83];
   for (const enemy of state.sharks) {
@@ -337,4 +427,4 @@ function frame(now) {
   if (state.mode === 'ended') { hud(); finish(); }
   draw(); requestAnimationFrame(frame);
 }
-resize(); showRecord(); hud(); requestAnimationFrame(frame);
+resize(); saveWallet(); showRecord(); hud(); requestAnimationFrame(frame);

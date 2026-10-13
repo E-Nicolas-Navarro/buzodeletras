@@ -40,6 +40,15 @@ Otra opción: subir los archivos a un repositorio e importarlo desde Vercel, con
 
 El juego orienta la técnica, pero no puede detectar qué dedos usa realmente. Un adulto puede acompañarlo al principio. Los récords de esta versión se ordenan por puntos y quedan solo en ese navegador y se distinguen por nivel y modo; no se sincronizan entre dispositivos. Si el navegador no permite guardarlos, el juego sigue funcionando.
 
+## Tienda y recompensas
+
+Al terminar un nivel se ganan **monedas de oro** y **gemas** (se guardan en este navegador). Con ellas se compran trajes de buzo en la **Tienda** (botón del encabezado o de la pantalla de resultados).
+
+- Nivel completado: monedas según puntos y nivel, más 1 a 3 gemas.
+- **Bonus de tiburones:** si ningún tiburón te toca, +120 monedas y +3 gemas; si te alcanzan 1 o 2, +50 monedas y +1 gema.
+- **Letras casi perfectas** (95 % de precisión o más): +50 monedas.
+- Si te quedás sin oxígeno ganás 3 monedas por palabra; en modo sin apuro, 2 por palabra. Sin gemas ni bonus.
+
 ## Diseño del océano
 
 La escena usa **profundidad 2.5D en Canvas**, no un motor 3D. Las ilustraciones son código local, sin imágenes descargadas ni nuevas dependencias.

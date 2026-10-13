@@ -155,3 +155,44 @@ test('a steady typing pace can win Otto, but a slow pace runs out of oxygen', ()
     assert.equal(state.won, secondsPerPhrase === 4);
   }
 });
+
+import { computeRewards } from '../engine.js';
+import { SKINS, sanitizeWallet, emptyWallet, buySkin, equipSkin } from '../skins.js';
+const won = (overrides = {}) => ({ ...createRun(1, false, () => .3), won: true, points: 2000, attempts: 100, mistakes: 10, collisions: 0, score: 32, ...overrides });
+test('rewards: clean dive earns the biggest shark bonus', () => {
+  const clean = computeRewards(won()), few = computeRewards(won({ collisions: 2 })), many = computeRewards(won({ collisions: 3 }));
+  assert.ok(clean.items.some(item => item.label.includes('Ningún tiburón')));
+  assert.ok(few.items.some(item => item.label.includes('Pocos tiburones')));
+  assert.ok(!many.items.some(item => item.label.includes('tiburón') || item.label.includes('tiburones')));
+  assert.ok(clean.coins > few.coins && few.coins > many.coins && clean.gems > few.gems && few.gems > many.gems);
+});
+test('rewards: precision bonus, defeats and practice', () => {
+  assert.ok(computeRewards(won({ mistakes: 2 })).items.some(item => item.label.includes('perfectas')));
+  const lost = computeRewards(won({ won: false })); assert.equal(lost.gems, 0); assert.equal(lost.coins, 96);
+  const practice = computeRewards(won({ relaxed: true })); assert.equal(practice.gems, 0); assert.equal(practice.coins, 64);
+});
+test('sharks that reach the diver are counted', () => {
+  const state = ready(0); state.sharks[0].progress = 1; tickRun(state, .1);
+  assert.equal(state.collisions, 1);
+});
+test('shop: buying, equipping and sanitising the wallet', () => {
+  const wallet = emptyWallet(); wallet.coins = 200;
+  assert.equal(buySkin(wallet, 'dorado'), false); assert.equal(buySkin(wallet, 'coral'), true);
+  assert.equal(wallet.coins, 0); assert.equal(buySkin(wallet, 'coral'), false);
+  assert.equal(equipSkin(wallet, 'coral'), true); assert.equal(equipSkin(wallet, 'pirata'), false);
+  assert.deepEqual(sanitizeWallet({ coins: -5, gems: 'x', owned: ['coral', 'nope'], equipped: 'pirata' }), { coins: 0, gems: 0, owned: ['clasico', 'coral'], equipped: 'clasico', gear: { mask: null, fins: null, head: null, hand: null } });
+  assert.deepEqual(sanitizeWallet(null), emptyWallet()); assert.equal(new Set(SKINS.map(skin => skin.id)).size, SKINS.length);
+});
+
+import { equipGear, ACCESSORIES } from '../skins.js';
+test('shop: accessories are bought per slot, equipped and removed', () => {
+  const wallet = emptyWallet(); wallet.coins = 500; wallet.gems = 5;
+  assert.equal(buySkin(wallet, 'sombrero-copa'), true); assert.equal(buySkin(wallet, 'sombrero-copa'), false);
+  assert.equal(equipGear(wallet, 'head', 'sombrero-copa'), true); assert.equal(equipGear(wallet, 'mask', 'sombrero-copa'), false);
+  assert.equal(equipGear(wallet, 'hand', 'guitarra'), false);
+  assert.equal(equipSkin(wallet, 'sombrero-copa'), false);
+  assert.equal(equipGear(wallet, 'head', null), true); assert.equal(wallet.gear.head, null);
+  const clean = sanitizeWallet({ owned: ['guitarra'], gear: { hand: 'guitarra', head: 'guitarra', mask: 'mascara-sol' }, equipped: 'guitarra' });
+  assert.deepEqual(clean.gear, { mask: null, fins: null, head: null, hand: 'guitarra' }); assert.equal(clean.equipped, 'clasico');
+  assert.equal(new Set(ACCESSORIES.map(item => item.id)).size, ACCESSORIES.length);
+});

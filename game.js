@@ -8,7 +8,7 @@ let sound = false, audio, last = 0, clock = 0, width = 1000, height = 480;
 let pausedMode = 'playing', targetSignature = '';
 let records = {};
 try {
-  const stored = JSON.parse(localStorage.getItem('buzo-records-v3') || '{}');
+  const stored = JSON.parse(localStorage.getItem('buzo-records-v4') || '{}');
   if (stored && typeof stored === 'object' && !Array.isArray(stored)) records = stored;
 } catch { /* Persistence is optional. */ }
 function recordKey() { return `${state.level}-${state.relaxed ? 'practice' : 'challenge'}`; }
@@ -89,16 +89,21 @@ function hud() {
   $('air').setAttribute('aria-label', state.relaxed ? 'Oxígeno ilimitado' : `Oxígeno al ${state.oxygen} por ciento`);
   $('oxygenFill').style.width = `${state.relaxed ? 100 : state.oxygen}%`;
   $('oxygenFill').classList.toggle('low', !state.relaxed && state.oxygen <= 30);
+  $('oxygenHud').hidden = ['welcome', 'results'].includes(state.mode);
+  $('oxygenMeter').setAttribute('aria-valuenow', String(state.relaxed ? 100 : state.oxygen));
+  $('oxygenMeter').setAttribute('aria-valuetext', state.relaxed ? 'Oxígeno ilimitado' : `${state.oxygen}%`);
   document.querySelector('.sea-label').textContent = state.boss ? 'El naufragio de Otto · 240 m' : `${LEVELS[state.level].name} · Oleada ${state.wave}`;
   updateBossHud();
 }
 function updateBossHud() {
-  $('bossHud').hidden = !state.boss || ['welcome', 'results'].includes(state.mode);
+  $('bossHud').hidden = !state.boss || ['welcome', 'results', 'celebrating'].includes(state.mode) || (state.mode === 'paused' && pausedMode === 'celebrating');
   if (!state.boss) return;
   $('bossHp').textContent = `${state.boss.hp} / ${BOSS_HITS}`;
   $('bossHealthFill').style.width = `${state.boss.hp / BOSS_HITS * 100}%`;
   $('bossHealth').setAttribute('aria-valuenow', String(state.boss.hp));
-  $('bossAttackHint').textContent = state.relaxed ? 'Sin apuro: Otto espera tus palabras.' : `Próximo ataque en ${Math.ceil(state.boss.attackIn)} s · Completá una palabra para frenarlo.`;
+  const warning = !state.relaxed && state.mode === 'boss' && state.boss.attackIn <= 1.5;
+  $('bossHud').classList.toggle('charging', warning);
+  $('bossAttackHint').textContent = state.relaxed ? 'Sin apuro: escribí las dos palabras y el espacio.' : `${warning ? '¡Prepará los dedos!' : state.boss.hp <= 4 ? '¡Otto aceleró!' : 'Ataque'} · ${Math.ceil(state.boss.attackIn)} s · El reloj no se frena.`;
 }
 function sync() {
   const canType = ['playing', 'boss'].includes(state.mode);
@@ -118,19 +123,27 @@ function start() {
   targetSignature = 'reset'; sync();
 }
 function finish() {
+  if (state.won && state.mode === 'ended' && !reducedMotion) {
+    state.mode = 'celebrating'; state.treasureTime = 0;
+    $('diverConsole').hidden = true; $('bossHud').hidden = true; $('bossBanner').hidden = true;
+    $('typing').disabled = true;
+    $('status').textContent = '¡Otto se hizo tu amigo! El cofre está abriéndose…';
+    hint(null); return;
+  }
   state.mode = 'results'; $('diverConsole').hidden = true; $('bossHud').hidden = true; $('bossBanner').hidden = true; $('typing').disabled = true; $('pauseButton').disabled = true; hint(null);
   const acc = accuracy(state.attempts, state.mistakes);
   const speed = state.elapsed ? Math.round(state.score / (state.elapsed / 60)) : 0;
   $('resultLabel').textContent = state.won ? 'Expedición completa' : 'Hora de subir a la superficie';
   $('resultTitle').textContent = state.won ? '¡Encontraste el tesoro!' : '¡Cada intento te enseña!';
-  $('resultMessage').textContent = state.won ? '¡Calmaste los ocho tentáculos de Otto y abriste el tesoro del barco hundido!' : `Llegaste a ${state.depth} metros. Recargá el oxígeno y probá otra vez.`;
+  $('resultMessage').textContent = state.won ? '¡Completaste las ocho frases de Otto y abriste el tesoro del barco hundido!' : `Llegaste a ${state.depth} metros. Recargá el oxígeno y probá otra vez.`;
   $('resultWords').textContent = state.score; $('resultAccuracy').textContent = `${acc}%`; $('resultSpeed').textContent = speed;
   $('resultPoints').textContent = `${state.points} puntos · ${state.bestStreak} palabras seguidas sin errores`;
   const key = recordKey(), old = records[key];
   if (!old || state.points > old.points) {
     records[key] = { points: state.points, depth: state.depth, accuracy: acc };
-    try { localStorage.setItem('buzo-records-v3', JSON.stringify(records)); } catch { /* Optional in private browsing. */ }
+    try { localStorage.setItem('buzo-records-v4', JSON.stringify(records)); } catch { /* Optional in private browsing. */ }
   }
+  $('oxygenHud').hidden = true;
   $('nextButton').hidden = !state.won || state.level >= LEVELS.length - 1;
   $('results').hidden = false; $('againButton').focus(); showRecord();
 }
@@ -154,7 +167,7 @@ $('typing').addEventListener('input', event => {
 $('typing').addEventListener('compositionend', () => $('typing').dispatchEvent(new Event('input')));
 $('typing').addEventListener('paste', event => { event.preventDefault(); $('feedback').textContent = 'Escribí con tus dedos, sin pegar palabras.'; });
 function pause() {
-  if (!['playing', 'diving', 'bossIntro', 'boss'].includes(state.mode)) return;
+  if (!['playing', 'diving', 'bossIntro', 'boss', 'celebrating'].includes(state.mode)) return;
   pausedMode = state.mode; state.mode = 'paused';
   $('pauseOverlay').hidden = false; $('typing').disabled = true; $('pauseButton').textContent = 'Seguir'; $('resumeButton').focus();
 }
@@ -244,17 +257,26 @@ function draw() {
       const boatScale = Math.min(1.05, width / 720);
       drawBoat(ctx, diverX - 108 * boatScale, waterline - 7, boatScale, t);
     }
-    drawDiver(ctx, diverX, -80 + (diverY + 80) * eased, scale, t);
+    const entryY = -80 + (diverY + 80) * eased;
+    drawDiver(ctx, diverX, entryY, scale, t);
+    $('oxygenHud').style.top = `${Math.max(8, entryY - 82 * scale - 43)}px`;
     ctx.font = 'bold 24px Trebuchet MS'; ctx.textAlign = 'center'; ctx.fillStyle = '#f0f7f4';
     ctx.fillText('¡Al agua!', width / 2, height * .85);
     return;
   }
   if (state.boss) {
     const smallScreen = width < 500;
-    drawShipwreck(ctx, width * .23, height * (smallScreen ? .71 : .77), Math.min(1, width / 650), t, state.won, smallScreen ? { x: 35, y: -45 } : undefined);
-    drawOctopus(ctx, width * .75, height * .32, Math.min(1.1, width / 530), t, state.boss);
+    drawShipwreck(ctx, width * .23, height * (smallScreen ? .71 : .77), Math.min(1, width / 650), t, state.won ? (reducedMotion ? 1 : Math.min(1, (state.treasureTime || 0) / 1.8)) : 0, smallScreen ? { x: 35, y: -45 } : undefined);
+    const ottoX = width * .77, ottoY = height * .42, ottoScale = Math.min(1.15, width / 620);
+    drawOctopus(ctx, ottoX, ottoY, ottoScale, t, { ...state.boss,
+      attackTime: reducedMotion ? 0 : state.boss.attackTime,
+      charging: !state.relaxed && (state.mode === 'boss' || state.mode === 'paused' && pausedMode === 'boss') && state.boss.attackIn <= 1.5,
+      target: { x: (diverX - ottoX) / ottoScale, y: (diverY - ottoY) / ottoScale }
+    });
   }
-  drawDiver(ctx, diverX, diverY + Math.sin(t * 1.5) * 4, scale, t, state.visualDepth);
+  const bob = Math.sin(t * 1.5) * 4;
+  drawDiver(ctx, diverX, diverY + bob, scale, t, state.visualDepth);
+  $('oxygenHud').style.top = `${diverY + bob - 82 * scale - 43}px`;
   const laneY = [.23, .42, .63, .83];
   for (const enemy of state.sharks) {
     const startX = width * (enemy.side === 'left' ? .1 : .9);
@@ -279,25 +301,29 @@ function draw() {
   for (const effect of state.effects) {
     ctx.globalAlpha = Math.max(0, 1 - effect.time / 1.2);
     ctx.font = 'bold 23px Trebuchet MS'; ctx.fillStyle = effect.kind === 'win' ? '#ffdb70' : '#ffa99b';
-    ctx.fillText(effect.text, diverX, diverY - 87 - (reducedMotion ? 0 : effect.time * 28));
+    ctx.fillText(effect.text, diverX, diverY - 132 - (reducedMotion ? 0 : effect.time * 28));
     ctx.globalAlpha = 1;
   }
 
 }
 function frame(now) {
   const dt = last ? Math.min((now - last) / 1000, .1) : 0; last = now;
-  if (!document.hidden && ['welcome', 'diving', 'playing', 'bossIntro', 'boss'].includes(state.mode)) clock += dt;
+  if (!document.hidden && ['welcome', 'diving', 'playing', 'bossIntro', 'boss', 'celebrating'].includes(state.mode)) clock += dt;
+  if (!document.hidden && state.mode === 'celebrating') {
+    state.treasureTime += dt;
+    if (state.treasureTime >= 3) finish();
+  }
   const targetBefore = state.targetId;
   const events = document.hidden ? [] : tickRun(state, dt);
   if (events.length || targetBefore !== state.targetId) {
     sync();
     if (events.includes('bossReady')) {
-      $('status').textContent = '¡Batalla final! Escribí ocho palabras para calmar al pulpo.';
-      $('feedback').textContent = 'Una palabra completa calma un tentáculo.'; $('typing').focus();
+      $('status').textContent = '¡Batalla final! Escribí ocho frases con su espacio. ¡El reloj no se frena!';
+      $('feedback').textContent = 'Dos palabras y un espacio calman un tentáculo.'; $('typing').focus();
     }
     if (events.includes('bossAttack')) {
       beep('miss'); $('status').textContent = '¡Otto agitó sus tentáculos! −18% de oxígeno.';
-      $('feedback').textContent = '¡Seguí! Completá la palabra para frenar su próximo ataque.';
+      $('feedback').textContent = 'Tu frase sigue intacta. ¡Seguí escribiendo!';
     }
     if (events.includes('ready')) {
       $('status').textContent = 'Elegí un tiburón escribiendo la primera letra de su palabra.';

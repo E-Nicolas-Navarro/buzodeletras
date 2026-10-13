@@ -92,8 +92,9 @@ function enterBoss(state) {
   state.mode = 'bossIntro'; state.sharks = []; state.targetId = null; state.input = '';
   // A supply crate at the wreck gives a fair chance after the descent.
   state.oxygen = Math.max(state.oxygen, 60);
-  const words = [...LEVELS[state.level].words].filter(word => word.length >= 2).slice(-BOSS_HITS);
-  const interval = LEVELS[state.level].seconds * .7;
+  const pool = LEVELS[state.level].words.slice(-BOSS_HITS);
+  const words = pool.map((word, i) => `${word} ${pool[(i + 3) % pool.length]}`);
+  const interval = [9, 8, 10][state.level];
   state.boss = {
     hp: BOSS_HITS, maxHp: BOSS_HITS, words, wordIndex: 0, introTime: 0,
     attackIn: interval, attackInterval: interval, hitTime: 0, attackTime: 0, defeated: false
@@ -120,7 +121,11 @@ function typeBoss(state, raw) {
   if (result.complete && state.oxygen > 0) {
     state.score++; state.streak++; state.bestStreak = Math.max(state.bestStreak, state.streak);
     state.boss.hp--; state.boss.wordIndex++; state.boss.hitTime = .5;
-    state.boss.attackIn = state.boss.attackInterval;
+    // Hits never postpone an attack. Halfway through, Otto picks up the pace.
+    if (state.boss.hp === BOSS_HITS / 2) {
+      state.boss.attackInterval *= .7;
+      state.boss.attackIn = Math.min(state.boss.attackIn, state.boss.attackInterval);
+    }
     let gained = result.value.length * 10 + 50;
     if (!state.relaxed) state.oxygen = Math.min(100, state.oxygen + OXYGEN.reward);
     state.input = '';

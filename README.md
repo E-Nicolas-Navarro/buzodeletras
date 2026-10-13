@@ -1,6 +1,6 @@
 # Buzo de letras
 
-Juego de mecanografía en español para chicos: escribí las palabras de los tiburones para que se alejen del buzo. El buzo salta al agua y se queda en el centro: llegan tiburones de ambos lados y cada palabra lo lleva más profundo. La misión termina al completar 24 palabras y llegar al tesoro a 240 metros, o al quedarse sin oxígeno. Sitio estático, sin dependencias, cuentas, anuncios ni servicios externos.
+Juego de mecanografía en español para chicos: escribí las palabras de los tiburones para que se alejen del buzo. El buzo salta al agua y se queda en el centro: llegan tiburones de ambos lados y cada palabra lo lleva más profundo. Tras completar 24 palabras llegás al naufragio a 240 metros: superá las ocho frases de Otto para abrir el tesoro. Al quedarse sin oxígeno termina la expedición. Sitio estático, sin dependencias, cuentas, anuncios ni servicios externos.
 
 ## Probar en tu computadora
 
@@ -76,10 +76,26 @@ Para cambiar vocabulario o tiempo base de acercamiento, editá `LEVELS` en `engi
 
 ### Estado de verificación
 
-15 casos aprobados: salto inicial y pausa, misión de 24 palabras, errores/correcciones, Ñ/tildes, pérdida y recuperación de oxígeno, colisiones sin daño duplicado, hasta cuatro tiburones distintos en carriles separados, selección por primera letra, dificultad progresiva, puntuación/profundidad, ayuda, avance de nivel y almacenamiento bloqueado; rutas Canvas válidas, aislamiento del contexto, parallax, límites de dibujo y empaquetado de ilustraciones. Build estático verificado.
+Cobertura automatizada: salto inicial y pausa, misión de 24 palabras, errores/correcciones, Ñ/tildes, pérdida y recuperación de oxígeno, colisiones sin daño duplicado, hasta cuatro tiburones distintos en carriles separados, selección por primera letra, dificultad progresiva, puntuación/profundidad, ayuda, avance de nivel y almacenamiento bloqueado; rutas Canvas válidas, aislamiento del contexto, parallax, límites de dibujo y empaquetado de ilustraciones. Build estático verificado.
 
 Se revisaron las ilustraciones aisladas en escritorio y pantalla chica mediante un replay de operaciones Canvas con Cairo. No es una captura de navegador. Este entorno no permitió abrir sockets locales ni ejecutar Chromium, por lo que **falta revisar la página completa y una partida en navegador real**. La conexión de Vercel CLI también falló; **no está publicado**. Antes de compartirlo, probalo con teclado físico en una computadora y revisá el diseño en una pantalla chica.
 
-La unidad de esta revisión es el modo aventura con múltiples amenazas. Su límite de reversión es el motor/controlador, los indicadores e instrucciones en HTML/CSS, y las pruebas/documentación asociadas. La configuración de Vercel conserva el mismo preset; build y servidor local incluyen ahora el módulo de ilustraciones. Los récords nuevos usan `buzo-records-v2` para no mezclar puntos con las misiones anteriores de 12 palabras.
+La unidad de esta revisión es el modo aventura con múltiples amenazas. Su límite de reversión es el motor/controlador, los indicadores e instrucciones en HTML/CSS, y las pruebas/documentación asociadas. La configuración de Vercel conserva el mismo preset; build y servidor local incluyen ahora el módulo de ilustraciones. Los récords actuales usan `buzo-records-v4`: las frases y el nuevo ritmo de Otto no se comparan con los retos anteriores. Los récords viejos no se borran, pero no se muestran en esta versión.
 
-La revisión visual se puede revertir quitando `visuals.js` y sus importaciones/dibujos en `game.js`, junto con las entradas del módulo en build/servidor y sus pruebas. Las reglas de oxígeno, puntos, amenazas y progresión en `engine.js` no cambiaron.
+La revisión visual se puede revertir quitando `visuals.js` y sus importaciones/dibujos en `game.js`, junto con las entradas del módulo en build/servidor y sus pruebas. La ilustración está separada de las reglas en `engine.js`.
+
+### Celebración del tesoro
+
+Al calmar a Otto, el cofre abre su tapa durante una celebración de tres segundos: aparecen monedas, luz dorada y destellos antes de los resultados. Se puede pausar con Escape o el botón de pausa; cambiar de pestaña también congela la escena. Con movimiento reducido, se muestra el cofre abierto y los resultados de inmediato. Otto tiene ocho brazos curvos con ventosas, manchas y una expresión amistosa al terminar.
+
+
+### Oxígeno sobre el buzo y un Otto con más reto
+
+- El oxígeno aparece sobre la cabeza del buzo, sigue su posición y conserva una lectura accesible del porcentaje. En práctica indica oxígeno ilimitado.
+- Otto pide ocho frases de dos palabras del nivel elegido, incluyendo el espacio. Cada frase calma un tentáculo y recupera 3% de oxígeno.
+- El reloj no se reinicia al acertar. Ataca cada 9, 8 o 10 segundos según el nivel; con cuatro tentáculos restantes el intervalo baja al 70%. Cada golpe consume 18% y conserva lo que ya escribiste. El brazo ámbar anuncia el ataque durante el último segundo y medio.
+- La nueva silueta coral tiene ocho brazos con ventosas y un brazo que se extiende hacia el buzo al atacar. Con movimiento reducido conserva el aviso estático, sin el movimiento de ataque. La práctica sigue sin ataques ni penalizaciones.
+
+Verificación: `npm test` y `npm run build`. Revisión Chromium local a 1280 y 390 px: partida hasta Otto, acierto, daño de ataque, pausa/reanudación, oxígeno visible y ausencia de desborde horizontal. Capturas temporales en `/tmp/otto-1280.png` y `/tmp/otto-390.png`.
+
+Límite de reversión: indicador del buzo en `index.html`, `style.css` y `game.js`; frases y reloj de Otto en `engine.js`/`game.js`; ilustración en `visuals.js`, con sus pruebas asociadas. No cambia el descenso ni las amenazas de tiburones. No se publicó esta revisión.

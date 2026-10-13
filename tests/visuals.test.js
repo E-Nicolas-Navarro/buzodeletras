@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { drawBoat, drawDiver, drawOceanBackdrop, drawOceanForeground, REEF_LAYERS, layerOffset, drawShipwreck, drawOctopus } from '../visuals.js';
+import { drawBoat, drawDiver, drawOceanBackdrop, drawOceanForeground, REEF_LAYERS, layerOffset, drawShipwreck, drawOctopus, drawTreasure } from '../visuals.js';
 
 function recordingContext() {
   const initial = { globalAlpha: 1, fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter' };
@@ -82,4 +82,39 @@ test('typing controls are nested inside the ocean with an accessible label, not 
   assert.match(html, /aria-describedby="fingerHint feedback"/);
   assert.equal((html.match(/id="typing"/g) || []).length, 1);
   assert.equal((html.match(/id="wordDisplay"/g) || []).length, 1);
+});
+
+
+test('treasure opening progresses smoothly, clamps endpoints and restores styles', () => {
+  const frames = [0, .25, .5, .75, 1].map(progress => {
+    const recording = recordingContext();
+    drawTreasure(recording.ctx, 150, 250, .8, progress);
+    recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
+    return recording.calls;
+  });
+  for (let i = 1; i < frames.length; i++) assert.notDeepEqual(frames[i], frames[i - 1]);
+  for (const [input, endpoint] of [[false, 0], [true, 1], [-2, 0], [3, 1]]) {
+    const recording = recordingContext(); drawTreasure(recording.ctx, 150, 250, .8, input);
+    assert.deepEqual(recording.calls, frames[endpoint ? 4 : 0]);
+  }
+});
+
+
+test('Otto has distinct anticipation, strike and calm poses with isolated canvas state', () => {
+  const poses = [{ hp: 8 }, { hp: 8, charging: true }, { hp: 8, attackTime: .3 }, { hp: 0, defeated: true }];
+  const frames = poses.map(boss => {
+    const recording = recordingContext();
+    drawOctopus(recording.ctx, 270, 200, .6, 0, { ...boss, target: { x: -180, y: 60 } });
+    recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
+    assert.ok(recording.calls.length < 1500);
+    return recording.calls;
+  });
+  for (let i = 1; i < frames.length; i++) assert.notDeepEqual(frames[i], frames[0]);
+});
+test('oxygen is attached to the ocean, outside the expedition HUD, with an accessible meter', async () => {
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  assert.ok(html.indexOf('id="oxygenHud"') > html.indexOf('id="ocean"'));
+  assert.ok(html.indexOf('id="oxygenHud"') < html.indexOf('id="welcome"'));
+  assert.match(html, /id="oxygenMeter"[^>]*role="progressbar"/);
+  assert.equal((html.match(/id="air"/g) || []).length, 1);
 });

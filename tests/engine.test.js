@@ -92,13 +92,13 @@ test('boss intro refills oxygen, pauses safely, and keeps words within the chose
     state.score = 23; state.oxygen = 20; complete(state);
     assert.equal(state.oxygen, 60); assert.equal(state.mode, 'bossIntro');
     assert.equal(state.boss.words.length, 8);
-    assert.ok(state.boss.words.every(word => LEVELS[level].words.includes(word)));
+    assert.ok(state.boss.words.every(phrase => phrase.split(' ').length === 2 && phrase.split(' ').every(word => LEVELS[level].words.includes(word))));
     state.mode = 'paused'; const snapshot = JSON.stringify(state); tickRun(state, 30);
     assert.equal(JSON.stringify(state), snapshot);
     state.mode = 'bossIntro'; tickRun(state, 2); assert.equal(state.mode, 'boss');
   }
 });
-test('boss attacks consume oxygen without erasing partial input, correct words reset attacks', () => {
+test('boss attacks consume oxygen without erasing partial input, correct phrases do not postpone attacks', () => {
   const state = ready(); state.score = 23; complete(state); tickRun(state, 2);
   const word = currentWord(state); typeInRun(state, word[0]);
   state.boss.attackIn = .05; const oxygen = state.oxygen;
@@ -106,8 +106,9 @@ test('boss attacks consume oxygen without erasing partial input, correct words r
   assert.equal(state.oxygen, oxygen - 18); assert.equal(state.input, word[0]);
   typeInRun(state, `${word[0]}@`); assert.equal(state.oxygen, oxygen - 23);
   typeInRun(state, word[0]); assert.equal(state.oxygen, oxygen - 23);
+  const deadline = state.boss.attackIn;
   typeInRun(state, word); assert.equal(state.boss.hp, 7); assert.equal(state.depth, 240);
-  assert.equal(state.boss.attackIn, state.boss.attackInterval); assert.equal(state.oxygen, oxygen - 20);
+  assert.equal(state.boss.attackIn, deadline); assert.equal(state.oxygen, oxygen - 20);
   state.mode = 'paused'; const snapshot = JSON.stringify(state); tickRun(state, 20);
   assert.equal(JSON.stringify(state), snapshot);
 });
@@ -119,4 +120,38 @@ test('boss defeat and oxygen exhaustion are exclusive; practice mode never attac
   typeInRun(practice, '@'); tickRun(practice, 100);
   assert.equal(practice.oxygen, 100); assert.equal(practice.boss.hp, 8);
   assert.equal(practice.mode, 'boss');
+});
+
+test('Otto speeds up halfway without extending a nearly due attack', () => {
+  for (const level of [0, 1, 2]) {
+    const state = ready(level); state.score = 23; complete(state); tickRun(state, 2);
+    const interval = state.boss.attackInterval;
+    assert.ok(interval <= 10);
+    for (let i = 0; i < 3; i++) complete(state);
+    state.boss.attackIn = .4; complete(state);
+    assert.equal(state.boss.hp, 4);
+    assert.equal(state.boss.attackInterval, interval * .7);
+    assert.equal(state.boss.attackIn, .4);
+    assert.deepEqual(tickRun(state, .5), ['bossAttack']);
+    assert.ok(state.boss.attackIn < interval * .7);
+  }
+});
+test('continuous attacks make an idle boss encounter lose and cannot be reset by typing', () => {
+  const state = ready(); state.score = 23; complete(state); tickRun(state, 2);
+  tickRun(state, 3); const remaining = state.boss.attackIn;
+  complete(state); assert.equal(state.boss.attackIn, remaining);
+  tickRun(state, 100);
+  assert.equal(state.mode, 'ended'); assert.equal(state.oxygen, 0); assert.equal(state.won, false);
+});
+
+test('a steady typing pace can win Otto, but a slow pace runs out of oxygen', () => {
+  for (const secondsPerPhrase of [4, 14]) {
+    const state = ready(); state.score = 23; complete(state); tickRun(state, 2);
+    for (let phrase = 0; phrase < 8 && state.mode === 'boss'; phrase++) {
+      for (let tick = 0; tick < secondsPerPhrase * 10 && state.mode === 'boss'; tick++) tickRun(state, .1);
+      if (state.mode === 'boss') complete(state);
+    }
+    assert.equal(state.mode, 'ended');
+    assert.equal(state.won, secondsPerPhrase === 4);
+  }
 });

@@ -262,26 +262,49 @@ export function drawOceanForeground(ctx, width, height, depth, time) {
 }
 
 export function drawTreasure(ctx, x, y, scale, opened = false) {
+  // Accept the original boolean API as well as an opening progress in [0, 1].
+  const progress = Math.max(0, Math.min(1, Number(opened)));
+  const lift = 1 - Math.pow(1 - progress, 3);
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
-  ellipse(ctx, 0, 9, 48, 16, '#ffe4a51c');
-  if (opened) {
-    const glow = ctx.createLinearGradient(0, -65, 0, 12);
-    glow.addColorStop(0, '#ffdf7a00'); glow.addColorStop(1, '#ffdf7a33');
-    polygon(ctx, [[-25, 0], [-49, -65], [47, -65], [25, 0]], glow);
+  ellipse(ctx, 0, 17, 45, 10, '#082d4288');
+  if (progress > 0) {
+    ctx.save(); ctx.globalAlpha = progress;
+    const glow = ctx.createLinearGradient(0, -115, 0, 12);
+    glow.addColorStop(0, '#ffdf7a00'); glow.addColorStop(1, '#ffdf7a99');
+    polygon(ctx, [[-26, 0], [-74, -115], [74, -115], [26, 0]], glow);
+    ctx.restore();
   }
-  rounded(ctx, -30, -14, 60, 32, 5, '#94623f');
-  rounded(ctx, -32, opened ? -41 : -28, 64, 21, 7, '#bd8550');
-  for (const strap of [-22, 17]) {
-    rounded(ctx, strap, -12, 6, 29, 1, '#ffd473');
-    rounded(ctx, strap, opened ? -39 : -26, 6, 17, 1, '#ffd473');
+  // A hinged lid: its front rises while the back stays attached to the chest.
+  ctx.save(); ctx.translate(0, -13); ctx.rotate(-lift * .48);
+  rounded(ctx, -32, -15 - lift * 30, 64, 23, 7, '#bd8550');
+  line(ctx, [[-26, -8 - lift * 30], [26, -8 - lift * 30]], '#e4ab69', 2);
+  for (const strap of [-23, 17]) rounded(ctx, strap, -13 - lift * 30, 6, 19, 1, '#ffd473');
+  ctx.restore();
+  rounded(ctx, -30, -12, 60, 32, 5, '#94623f');
+  line(ctx, [[-26, 2], [26, 2]], '#6a483a', 2);
+  line(ctx, [[-26, 11], [26, 11]], '#6a483a', 2);
+  for (const strap of [-23, 17]) rounded(ctx, strap, -11, 6, 29, 1, '#ffd473');
+  if (progress > 0) {
+    ellipse(ctx, 0, -10, 25, 5 * lift, '#382c36');
+    ctx.save(); ctx.globalAlpha = progress;
+    for (let i = 0; i < 9; i++) {
+      const cx = -20 + i * 5;
+      const cy = -13 - Math.sin(i * 2.4) * 3 - lift * 6;
+      ellipse(ctx, cx, cy, 5, 3, '#ffdc72');
+      line(ctx, [[cx - 2, cy], [cx + 2, cy]], '#fff2b7', 1);
+    }
+    for (let i = 0; i < 7; i++) {
+      const travel = Math.max(0, (progress - .2) / .8);
+      const sx = Math.sin(i * 2.7) * (15 + travel * 40);
+      const sy = -22 - travel * (28 + i * 10);
+      const radius = 2 + Math.sin(progress * Math.PI) * 2;
+      line(ctx, [[sx - radius, sy], [sx + radius, sy]], '#fff5c9', 2);
+      line(ctx, [[sx, sy - radius], [sx, sy + radius]], '#fff5c9', 2);
+    }
+    ctx.restore();
   }
-  line(ctx, [[-27, 1], [27, 1]], '#6a483a', 2);
-  rounded(ctx, -5, -11, 10, 12, 2, '#ffe094');
-  if (opened) {
-    for (const [cx, cy] of [[-17, -18], [-6, -20], [7, -16], [18, -20]]) ellipse(ctx, cx, cy, 7, 5, '#ffdc72');
-    line(ctx, [[-18, -55], [-18, -45]], '#fff5c9', 2);
-    line(ctx, [[-23, -50], [-13, -50]], '#fff5c9', 2);
-  }
+  rounded(ctx, -5, -9, 10, 12, 2, '#ffe094');
+  ellipse(ctx, 0, -4, 1.5, 2, '#76512f');
   ctx.restore();
 }
 
@@ -318,38 +341,77 @@ export function drawShipwreck(ctx, x, y, scale, time = 0, opened = false, treasu
 
 export function drawOctopus(ctx, x, y, scale, time = 0, boss = {}) {
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
-  const calm = boss.defeated || false;
-  const quietTentacles = (boss.maxHp || 8) - (boss.hp ?? 8);
-  const attack = boss.attackTime > 0 && !calm ? Math.sin(boss.attackTime * 5) * 13 : 0;
-  const ink = calm ? '#769db5' : boss.hitTime > 0 ? '#c6a9de' : '#9577b8';
-  // Eight independent arms, with rounded suction cups rather than sharp edges.
-  for (let i = 0; i < 8; i++) {
-    const side = i < 4 ? -1 : 1;
-    const slot = i % 4;
-    const curled = i < quietTentacles;
-    const reach = (curled ? 35 : 69 + slot * 13) + attack;
-    const endX = side * reach;
-    const endY = (curled ? 63 : 79 + slot * 7) + Math.sin(time * 1.3 + i) * 5;
-    const rootX = side * (12 + slot * 9);
-    ctx.strokeStyle = curled ? '#658aa4' : ink;
-    ctx.lineWidth = 14 - slot; ctx.lineCap = 'round'; ctx.beginPath();
-    ctx.moveTo(rootX, 28); ctx.bezierCurveTo(rootX + side * 20, 79, endX + side * 16, endY + 35, endX, endY); ctx.stroke();
-    ctx.strokeStyle = '#d7bfda99'; ctx.lineWidth = 3; ctx.beginPath();
-    ctx.moveTo(rootX + side * 3, 45); ctx.quadraticCurveTo(endX * .65, endY + 23, endX - side * 3, endY + 7); ctx.stroke();
-    for (let cup = 0; cup < 3; cup++) ellipse(ctx, endX - side * cup * 7, endY + 5 + cup * 4, 2, 2, '#e5cadba0');
+  const calm = Boolean(boss.defeated);
+  const quiet = (boss.maxHp || 8) - (boss.hp ?? 8);
+  const charging = boss.charging && !calm;
+  const strike = !calm && boss.attackTime > 0 ? Math.sin(Math.min(1, boss.attackTime / .6) * Math.PI) : 0;
+  const ink = calm ? '#79aaa9' : boss.hitTime > 0 ? '#ffd4b5' : '#d47f80';
+  const shade = calm ? '#477e8d' : '#874d72';
+  const target = boss.target || { x: -200, y: 65 };
+  // Eight distinct arms, back to front. Sampled ribbons taper without joint seams.
+  const tips = [[-115, 14], [92, 6], [-94, 100], [113, 76], [-58, 124], [63, 132], [-132, 65], [26, 110]];
+  for (let i = 0; i < tips.length; i++) {
+    const side = tips[i][0] < 0 ? -1 : 1;
+    const curled = i < quiet;
+    const attacking = i === 6 && !calm;
+    let [endX, endY] = tips[i];
+    if (curled || calm) { endX *= .68; endY *= .8; }
+    endY += Math.sin(time * 1.7 + i) * (charging ? 2 : 5);
+    if (attacking) {
+      endX += (target.x - endX) * strike;
+      endY += (target.y - endY) * strike;
+      if (charging) { endX += 24; endY -= 30; }
+    }
+    const p0 = [side * (18 + i % 3 * 10), 29 + i % 2 * 9];
+    const p1 = [side * (58 + i % 3 * 16), 51 + i % 3 * 14];
+    const p2 = [endX + side * (curled ? 33 : 46), endY + (i % 2 ? -38 : 42)];
+    const point = t => p0.map((_, axis) => (1-t)**3*p0[axis] + 3*(1-t)**2*t*p1[axis] + 3*(1-t)*t*t*p2[axis] + t**3*[endX, endY][axis]);
+    const upper = [], lower = [];
+    for (let step = 0; step <= 24; step++) {
+      const t = step / 24, a = point(t), b = point(Math.min(1, t + .01));
+      const prev = step === 24 ? point(.99) : a;
+      const dx = b[0] - prev[0], dy = b[1] - prev[1], length = Math.hypot(dx, dy) || 1;
+      const radius = 14 * (1 - t) + 2;
+      upper.push([a[0] - dy / length * radius, a[1] + dx / length * radius]);
+      lower.push([a[0] + dy / length * radius, a[1] - dx / length * radius]);
+    }
+    polygon(ctx, [...upper, ...lower.reverse()], shade);
+    const armColor = attacking && charging ? '#ffbf7d' : curled ? '#79aaa9' : ink;
+    ctx.strokeStyle = armColor; ctx.lineWidth = 14; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(...p0); ctx.bezierCurveTo(...p1, ...p2, endX, endY); ctx.stroke();
+    for (let cup = 0; cup < 8; cup++) {
+      const t = .2 + cup * .095, [cx, cy] = point(t), r = 4.2 * (1 - t * .6);
+      ellipse(ctx, cx, cy + 5, r + 1, r, shade);
+      ellipse(ctx, cx, cy + 4, r, r * .75, '#ffe0b6');
+      ellipse(ctx, cx, cy + 4, r * .4, r * .35, '#ba7f88');
+    }
   }
-  const head = ctx.createLinearGradient(-47, -63, 36, 45);
-  head.addColorStop(0, calm ? '#94b8c9' : '#b49ad1'); head.addColorStop(1, ink);
-  ellipse(ctx, 0, -9, 56, 64, head);
-  ellipse(ctx, -20, -35, 17, 9, '#d9c4e625');
-  for (const eye of [-19, 19]) {
-    ellipse(ctx, eye, 5, 13, 16, '#fff4e4');
-    ellipse(ctx, eye + (calm ? 0 : -2), 7, 6, 9, '#294562');
-    ellipse(ctx, eye - 3, 3, 2, 3, '#fff');
+  // A pear-shaped mantle, not a circle: heavy forehead and a narrow arm skirt.
+  const head = ctx.createLinearGradient(-42, -83, 45, 52);
+  head.addColorStop(0, calm ? '#a3cdc1' : '#f6b18d'); head.addColorStop(.55, ink); head.addColorStop(1, shade);
+  ctx.fillStyle = head; ctx.beginPath(); ctx.moveTo(-43, 28);
+  ctx.bezierCurveTo(-75, -15, -63, -87, -15, -91);
+  ctx.bezierCurveTo(44, -105, 78, -37, 51, 16);
+  ctx.bezierCurveTo(43, 40, 13, 50, -9, 43);
+  ctx.bezierCurveTo(-27, 47, -41, 37, -43, 28); ctx.fill();
+  ellipse(ctx, -24, -62, 19, 10, '#ffe3b947');
+  for (const [sx, sy, r] of [[27,-62,6],[40,-45,4],[31,-79,3],[-44,-37,4],[48,-22,3]]) {
+    ellipse(ctx, sx, sy, r, r * .7, '#9e57734d');
   }
-  ellipse(ctx, -36, 24, 8, 4, '#dca3b650'); ellipse(ctx, 36, 24, 8, 4, '#dca3b650');
-  ctx.strokeStyle = '#604d79'; ctx.lineWidth = 3; ctx.beginPath();
-  if (calm) ctx.arc(0, 25, 8, .15, Math.PI - .15);
-  else { ctx.moveTo(-6, 31); ctx.quadraticCurveTo(0, 26, 6, 31); }
-  ctx.stroke(); ctx.restore();
+  // Eyes look toward the diver. Brows change from focused to friendly at victory.
+  for (const eye of [-25, 17]) {
+    ellipse(ctx, eye, -3, 15, calm ? 16 : 13, '#fff0d6');
+    ellipse(ctx, eye - (calm ? 0 : 4), -1, 6, 8, '#163e51');
+    ellipse(ctx, eye - 6, -5, 2, 2.5, '#fff');
+  }
+  line(ctx, [[-42,-24], [-30,-26], [-12,-17]], shade, 5);
+  line(ctx, [[3,-17], [20,-25], [32,-22]], shade, 5);
+  ellipse(ctx, -41, 15, 8, 4, '#f4af9266'); ellipse(ctx, 32, 15, 8, 4, '#f4af9266');
+  ctx.strokeStyle = '#633c58'; ctx.lineWidth = 3; ctx.beginPath();
+  ctx.moveTo(-14, 22); ctx.quadraticCurveTo(-4, calm ? 38 : 16, 7, 22); ctx.stroke();
+  // Static cues remain legible with reduced motion and while paused.
+  if (charging) {
+    for (let i = 0; i < 3; i++) line(ctx, [[-75-i*13, -43+i*16], [-84-i*13, -43+i*16]], '#ffdb89', 3);
+  }
+  ctx.restore();
 }

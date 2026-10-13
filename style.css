@@ -878,3 +878,27 @@ dialog li,dialog p {
     font-size: 9px;
   }
 }
+
+/* Air belongs to the diver, not to the expedition counters. */
+.diver-health {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  top: calc(53% - 117px);
+  transform: translateX(-50%);
+  width: 100px;
+  padding: 5px 8px 7px;
+  border: 1px solid #9bd8d65c;
+  border-radius: 8px;
+  background: #062c48ed;
+  color: #edf6f4;
+  pointer-events: none;
+}
+.air-label { display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 4px; }
+.air-label > span { color: #9bd8d6; font-weight: bold; }
+.diver-health .oxygen-track { width: 100%; height: 7px; }
+.boss-hud.charging { border-color: #ffcd79; background: #493547f5; }
+.boss-hud { border: 1px solid #bc8b9d55; }
+.boss-name > span { color: #ffc39e; }
+#bossHealthFill { background: #ef9b82; }
+.boss-hud.charging .boss-attack-hint { color: #ffe1a5; }

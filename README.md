@@ -49,6 +49,17 @@ Al terminar un nivel se ganan **monedas de oro** y **gemas** (se guardan en este
 - **Letras casi perfectas** (95 % de precisión o más): +50 monedas.
 - Si te quedás sin oxígeno ganás 3 monedas por palabra; en modo sin apuro, 2 por palabra. Sin gemas ni bonus.
 
+## Guardar el progreso
+
+Monedas, gemas, trajes, estrellas, récords y sonido se guardan en el navegador de cada dispositivo. El botón **Mi progreso** del encabezado permite:
+
+- **Copiar el código** (o **descargarlo como archivo**) para guardarlo, por ejemplo mandándotelo por mensaje.
+- **Recuperarlo** pegando el código o eligiendo el archivo, en el mismo navegador tras borrar datos o en otro dispositivo. Antes de reemplazar se muestra qué contiene el código y qué se perdería.
+- Un punto rojo avisa si hay progreso y no hay respaldo de los últimos 7 días.
+- El juego pide al navegador **almacenamiento persistente** para que no borre los datos por falta de espacio; el navegador decide si lo concede.
+
+El código lleva una suma de control que detecta errores de copiado, pero no impide editarlo a propósito: es un juego sin cuentas ni servidor. Los datos de `localhost` y de la dirección publicada son distintos.
+
 ## Jugar de a dos (cooperativo)
 
 Dos personas pueden jugar cada una en su dispositivo. En la pantalla de inicio, una elige **Jugar con un amigo → Crear una sala** y comparte el código de 4 letras; la otra elige **Entrar** y lo escribe. La sala admite solo dos personas y quien la crea es el anfitrión: elige el nivel y empieza la partida.

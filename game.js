@@ -1,6 +1,7 @@
 import { drawBoat, drawDiver, drawOceanBackdrop, drawOceanForeground, drawShipwreck, drawOctopus } from './visuals.js';
 import { LEVELS, MISSION_WORDS, BOSS_HITS, currentWord, fingerFor, accuracy, computeRewards, starsFor, refreshRun, partnerBossHit, bossAttackDamage, createRun, activeSharks, chooseTarget, typeInRun, tickRun } from './engine.js';
 import { SKINS, SLOTS, ACCESSORIES, sanitizeWallet, canAfford, buySkin, equipSkin, equipGear } from './skins.js';
+import { makeBackup, readBackup, describeBackup, needsBackup, backupAge } from './save.js';
 import { loadPeer, hostRoom, joinRoom, normalizeCode, EMOTES } from './net.js';
 const $ = id => document.getElementById(id);
 const canvas = $('scene'), ctx = canvas.getContext('2d');
@@ -16,13 +17,16 @@ try {
 let seenCoach = false;
 try { seenCoach = localStorage.getItem('buzo-seen-v1') === '1'; } catch { /* Optional. */ }
 let lowWarned = false;
+let lastBackup = 0;
+try { lastBackup = Number(JSON.parse(localStorage.getItem('buzo-backup-v1') || '{}').at) || 0; } catch { /* Optional. */ }
 let wallet = sanitizeWallet(null);
 try { wallet = sanitizeWallet(JSON.parse(localStorage.getItem('buzo-wallet-v1') || 'null')); } catch { /* Persistence is optional. */ }
 function saveWallet() {
   try { localStorage.setItem('buzo-wallet-v1', JSON.stringify(wallet)); } catch { /* Optional in private browsing. */ }
   $('walletCoins').textContent = wallet.coins; $('walletGems').textContent = wallet.gems;
+  $('progressButton').classList.toggle('needs-backup', needsBackup(wallet, lastBackup));
 }
-const modalOpen = () => $('help').open || $('shop').open || $('coop').open;
+const modalOpen = () => $('help').open || $('shop').open || $('coop').open || $('progress').open;
 // ----- Two-player room: shared oxygen, words and boss, one device each -----
 let room = null, linked = false, partner = null, coopNote = '', syncClock = 0;
 const emotes = [];
@@ -285,7 +289,7 @@ function finish() {
     try { localStorage.setItem('buzo-records-v4', JSON.stringify(records)); } catch { /* Optional in private browsing. */ }
   }
   if (!state.rewarded) {
-    state.rewarded = computeRewards(state); wallet.coins += state.rewarded.coins; wallet.gems += state.rewarded.gems; saveWallet();
+    state.rewarded = computeRewards(state); wallet.coins += state.rewarded.coins; wallet.gems += state.rewarded.gems; saveWallet(); void protectStorage();
   }
   const earned = starsFor(state);
   if (earned > (Number(stars[state.level]) || 0)) {
@@ -453,6 +457,65 @@ function renderShop() {
   else for (const item of ACCESSORIES.filter(accessory => accessory.slot === shopTab)) grid.append(shopCard(item, 'gear'));
   $('skinGrid').append(grid);
 }
+// ----- Progress backup and restore -----
+async function protectStorage() {
+  try { if (navigator.storage?.persist) return await navigator.storage.persist(); } catch { /* Optional. */ }
+  return false;
+}
+const snapshot = () => ({ wallet, stars, records, sound });
+function markBackup() {
+  lastBackup = Date.now();
+  try { localStorage.setItem('buzo-backup-v1', JSON.stringify({ at: lastBackup })); } catch { /* Optional. */ }
+  saveWallet(); $('progressStatus').textContent = `Tu progreso se guarda en este navegador (${backupAge(lastBackup)}).`;
+}
+function progressMessage(text, error = false) { $('progressMessage').textContent = text; $('progressMessage').classList.toggle('error', error); }
+let pendingRestore = null;
+async function openProgress() {
+  pause(); pendingRestore = null; progressMessage(''); $('confirmRestore').hidden = true; $('restoreInput').value = '';
+  $('backupCode').value = makeBackup(snapshot());
+  $('progressStatus').textContent = `Tu progreso se guarda en este navegador (${backupAge(lastBackup)}).`;
+  $('storageStatus').textContent = '';
+  $('progress').showModal();
+  const kept = await protectStorage();
+  $('storageStatus').textContent = kept ? 'El navegador protegió estos datos para que no se borren solos.' : 'El navegador puede borrar estos datos si hace falta espacio. Guardá un respaldo para no perderlos.';
+}
+async function copyBackup() {
+  try { await navigator.clipboard.writeText($('backupCode').value); }
+  catch { $('backupCode').select?.(); try { document.execCommand?.('copy'); } catch { /* The code stays visible to copy by hand. */ } }
+  markBackup(); progressMessage('¡Código copiado! Guardalo en un lugar seguro.');
+}
+function downloadBackup() {
+  try {
+    const url = URL.createObjectURL(new Blob([$('backupCode').value], { type: 'text/plain' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'buzo-de-letras-progreso.txt'; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    markBackup(); progressMessage('Archivo descargado. Guardalo en un lugar seguro.');
+  } catch { progressMessage('No se pudo descargar. Copiá el código y guardalo a mano.', true); }
+}
+function checkRestore() {
+  const data = readBackup($('restoreInput').value);
+  if (!data) { pendingRestore = null; $('confirmRestore').hidden = true; progressMessage('Ese código no es válido. Revisá que esté completo.', true); return; }
+  pendingRestore = data; $('confirmRestore').hidden = false;
+  progressMessage(`Código válido: ${describeBackup(data)}. Reemplazaría lo que tenés ahora (${describeBackup(snapshot())}).`);
+}
+function applyRestore() {
+  if (!pendingRestore) return;
+  ({ wallet, stars, records, sound } = { ...pendingRestore });
+  try {
+    localStorage.setItem('buzo-records-v4', JSON.stringify(records)); localStorage.setItem('buzo-stars-v1', JSON.stringify(stars));
+    localStorage.setItem('buzo-sound-v1', sound ? 'on' : 'off');
+  } catch { /* Optional in private browsing. */ }
+  pendingRestore = null; $('confirmRestore').hidden = true;
+  markBackup(); showSound(); renderLevels(); showRecord(); hud(); progressMessage('¡Progreso recuperado!');
+}
+$('progressButton').onclick = openProgress; $('closeProgress').onclick = () => $('progress').close();
+$('progress').addEventListener('close', () => { if (state.mode === 'paused') $('resumeButton').focus(); });
+$('copyBackup').onclick = copyBackup; $('downloadBackup').onclick = downloadBackup;
+$('checkRestore').onclick = checkRestore; $('confirmRestore').onclick = applyRestore;
+$('restoreFile').addEventListener('change', async event => {
+  const file = event.target.files?.[0]; if (!file) return;
+  try { $('restoreInput').value = (await file.text()).slice(0, 20000); checkRestore(); } catch { progressMessage('No se pudo leer el archivo.', true); }
+});
 function openShop() { pause(); $('shopMessage').textContent = ''; renderShop(); $('shop').showModal(); }
 $('shopButton').onclick = $('resultShopButton').onclick = openShop;
 $('closeShop').onclick = () => $('shop').close();

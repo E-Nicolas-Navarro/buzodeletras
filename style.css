@@ -999,3 +999,14 @@ dialog li,dialog p {
 .earn { margin:0 0 9px!important; }
 .welcome small { margin-top:8px; }
 @media (max-width:620px) { .welcome-content { padding:16px 18px; } .welcome h2 { font-size:28px; } }
+
+.progress { max-width:520px; max-height:92vh; overflow-y:auto; }
+.progress h3 { margin:18px 0 4px; font-size:16px; color:var(--teal); }
+.progress textarea { width:100%; box-sizing:border-box; font:12px/1.4 ui-monospace,Consolas,monospace; border:2px solid #9fc2c2; border-radius:10px; padding:8px; color:var(--ink); background:#fff; resize:vertical; word-break:break-all; }
+.progress-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:8px 0; }
+.progress-actions .primary { min-width:0; padding:10px 16px; font-size:14px; }
+.file-pick { cursor:pointer; text-decoration:underline; }
+.progress-message { font-weight:bold; color:var(--teal); min-height:1.4em; }
+.progress-message.error { color:#a23b2a; }
+.needs-backup { position:relative; }
+.needs-backup::after { content:''; position:absolute; top:4px; right:0; width:9px; height:9px; border-radius:50%; background:#ef6f5e; }

@@ -1,7 +1,7 @@
-import { drawBoat, drawBoatShadow, drawDiver, drawOceanBackdrop, drawOceanForeground, drawShipwreck, drawOctopus, drawCreature, drawLoot, diverTop } from './visuals.js';
-import { LEVELS, MISSION_WORDS, BOSS_HITS, FRENZY, currentWord, fingerFor, accuracy, computeRewards, starsFor, refreshRun, partnerBossHit, bossAttackDamage, createRun, activeSharks, chooseTarget, typeInRun, tickRun } from './engine.js';
+import { drawBoat, drawBoatShadow, drawDiver, drawOceanBackdrop, drawOceanForeground, drawShipwreck, drawBoss, drawCreature, drawLoot, diverTop } from './visuals.js';
+import { LEVELS, MISSION_WORDS, BOSS_HITS, FRENZY, bossOf, currentWord, fingerFor, accuracy, computeRewards, starsFor, refreshRun, partnerBossHit, bossAttackDamage, createRun, activeSharks, chooseTarget, typeInRun, tickRun } from './engine.js';
 import { SKINS, SLOTS, ACCESSORIES, skinById, sanitizeWallet, canAfford, buySkin, equipSkin, equipGear, priceOf, onSale } from './skins.js';
-import { makeBackup, readBackup, describeBackup, needsBackup, backupAge } from './save.js';
+import { makeBackup, readBackup, describeBackup, needsBackup, backupAge, sanitizeStars, sanitizeRecords } from './save.js';
 import { loadPeer, hostRoom, joinRoom, normalizeCode, inviteLink, codeFromLink, EMOTES } from './net.js';
 import { currentEvent, eventWords } from './events.js';
 import { createHands, stepHands, drawHands } from './hands.js';
@@ -16,8 +16,8 @@ let audio, last = 0, clock = 0, width = 1000, height = 480;
 let pausedMode = 'playing', targetSignature = '';
 let records = {};
 try {
-  const stored = JSON.parse(localStorage.getItem('buzo-records-v4') || '{}');
-  if (stored && typeof stored === 'object' && !Array.isArray(stored)) records = stored;
+  // Older saves were keyed by level number; the sanitizer moves them to world ids.
+  records = sanitizeRecords(JSON.parse(localStorage.getItem('buzo-records-v4') || '{}'));
 } catch { /* Persistence is optional. */ }
 let seenCoach = false;
 try { seenCoach = localStorage.getItem('buzo-seen-v1') === '1'; } catch { /* Optional. */ }
@@ -32,6 +32,8 @@ function saveWallet() {
   $('walletCandyWrap').hidden = !season && !wallet.candy;
   $('progressButton').classList.toggle('needs-backup', needsBackup(wallet, lastBackup));
 }
+const boss = () => bossOf(state.level);
+const capital = text => text.charAt(0).toUpperCase() + text.slice(1);
 // Modes where the typing box is live.
 const typingMode = () => ['playing', 'boss', 'frenzy'].includes(state.mode);
 const inFrenzy = () => state.mode === 'frenzy' || state.mode === 'paused' && pausedMode === 'frenzy';
@@ -128,7 +130,7 @@ function handlePartner(msg) {
   else if (msg.t === 'emote') emotes.push({ who: 'partner', text: msg.e, time: 0 });
   const before = state.mode;
   refreshRun(state);
-  if (before === 'playing' && state.mode === 'bossIntro') $('status').textContent = '¡Llegaron al naufragio! Otto custodia el tesoro.';
+  if (before === 'playing' && state.mode === 'bossIntro') $('status').textContent = `¡Llegaron al tesoro! ${capital(boss().name)} lo custodia.`;
   if (before !== 'frenzy' && state.mode === 'frenzy') frenzyStarted();
   sync(); if (state.mode === 'ended') finish();
 }
@@ -144,19 +146,19 @@ const roomHandlers = () => ({
 
 let stars = {};
 try {
-  const stored = JSON.parse(localStorage.getItem('buzo-stars-v1') || '{}');
-  if (stored && typeof stored === 'object' && !Array.isArray(stored)) stars = stored;
+  stars = sanitizeStars(JSON.parse(localStorage.getItem('buzo-stars-v1') || '{}'));
 } catch { /* Persistence is optional. */ }
-const LEVEL_TIPS = ['Fila central', 'Palabras del mar', 'Todo el teclado'];
 const starText = count => '★'.repeat(count) + '☆'.repeat(3 - count);
 function renderLevels() {
   const box = $('levelCards'); box.replaceChildren();
   LEVELS.forEach((level, index) => {
-    const selected = Number($('level').value) === index, earned = Math.min(3, Math.max(0, Number(stars[index]) || 0));
-    const card = document.createElement('button'); card.type = 'button'; card.className = `level-card ${selected ? 'selected' : ''}`;
+    const selected = Number($('level').value) === index, earned = Math.min(3, Math.max(0, Number(stars[level.id]) || 0));
+    const fresh = level.isNew && !earned;
+    const card = document.createElement('button'); card.type = 'button'; card.className = `level-card ${selected ? 'selected' : ''} ${fresh ? 'fresh' : ''}`;
     card.setAttribute('role', 'radio'); card.setAttribute('aria-checked', String(selected));
-    card.setAttribute('aria-label', `Nivel ${index + 1}: ${LEVEL_TIPS[index]}. ${earned} de 3 estrellas`);
-    const title = document.createElement('strong'); title.textContent = `${index + 1} · ${LEVEL_TIPS[index]}`;
+    card.setAttribute('aria-label', `Mundo ${index + 1}: ${level.tip}${fresh ? ', nuevo' : ''}. Jefe: ${bossOf(index).name}. ${earned} de 3 estrellas`);
+    const title = document.createElement('strong'); title.textContent = `${index + 1} · ${level.tip}`;
+    if (fresh) { const badge = document.createElement('em'); badge.className = 'level-new'; badge.textContent = '¡Nuevo!'; title.append(badge); }
     const name = document.createElement('small'); name.textContent = level.name;
     const rating = document.createElement('span'); rating.className = 'level-stars'; rating.textContent = starText(earned);
     card.append(title); card.append(name); card.append(rating);
@@ -164,9 +166,9 @@ function renderLevels() {
     box.append(card);
   });
 }
-function recordKey() { return `${state.level}-${state.relaxed ? 'practice' : 'challenge'}`; }
+function recordKey() { return `${LEVELS[state.level].id}-${state.relaxed ? 'practice' : 'challenge'}`; }
 function showRecord() {
-  const key = `${$('level').value}-${$('relaxed').checked ? 'practice' : 'challenge'}`;
+  const key = `${LEVELS[Number($('level').value)]?.id}-${$('relaxed').checked ? 'practice' : 'challenge'}`;
   const best = records[key];
   $('record').textContent = best ? `Tu récord: ${best.points} puntos · ${best.depth} m de profundidad` : 'Tu primera expedición te espera.';
 }
@@ -252,7 +254,7 @@ function updateTargets() {
 }
 function hud() {
   $('depth').textContent = `${state.depth} m`;
-  $('scoreLabel').textContent = state.frenzy ? 'Tesoro' : state.boss ? 'Pulpo' : state.coop ? 'Equipo' : 'Palabras';
+  $('scoreLabel').textContent = state.frenzy ? 'Tesoro' : state.boss ? boss().short : state.coop ? 'Equipo' : 'Palabras';
   $('score').textContent = state.frenzy ? `${state.frenzy.caught}` : state.boss ? `${BOSS_HITS - state.boss.hp} / ${BOSS_HITS}` : `${state.score + state.partnerScore} / ${MISSION_WORDS}`;
   $('partnerHud').hidden = !state.coop || ['welcome', 'results'].includes(state.mode);
   $('partnerText').textContent = `Compañero: ${state.partnerScore} ${state.partnerScore === 1 ? 'palabra' : 'palabras'}`;
@@ -267,7 +269,7 @@ function hud() {
   $('hudBar').hidden = ['welcome', 'results'].includes(state.mode);
   $('oxygenMeter').setAttribute('aria-valuenow', String(state.relaxed ? 100 : state.oxygen));
   $('oxygenMeter').setAttribute('aria-valuetext', state.relaxed ? 'Oxígeno ilimitado' : `${state.oxygen}%`);
-  document.querySelector('.sea-label').textContent = state.frenzy ? 'El naufragio de Otto · ¡Frenesí del tesoro!' : state.boss ? 'El naufragio de Otto · 240 m' : `${LEVELS[state.level].name} · Oleada ${state.wave}`;
+  document.querySelector('.sea-label').textContent = state.frenzy ? `${boss().lair} · ¡Frenesí del tesoro!` : state.boss ? `${boss().lair} · 240 m` : `${LEVELS[state.level].name} · Oleada ${state.wave}`;
   updateBossHud(); updateFrenzyHud();
 }
 function updateFrenzyHud() {
@@ -284,19 +286,23 @@ function updateFrenzyHud() {
 }
 function frenzyStarted() {
   burst(ottoAt, '#ffe27a', 26); beep('prize');
-  toast('¡Otto se hizo tu amigo! ¡Frenesí del tesoro!');
+  toast(`¡${capital(boss().name)} se hizo tu amigo! ¡Frenesí del tesoro!`);
   $('status').textContent = '¡Ganaste! Desde el barco cae el tesoro: escribí sus palabras para atraparlo.';
   $('feedback').textContent = 'Puntos ×2 y sin oxígeno en juego.';
 }
 function updateBossHud() {
   $('bossHud').hidden = !state.boss || ['welcome', 'results', 'celebrating'].includes(state.mode) || (state.mode === 'paused' && pausedMode === 'celebrating') || inFrenzy();
   if (!state.boss) return;
+  const guardian = boss();
+  $('bossName').textContent = guardian.title; $('frenzyPill').textContent = `¡${capital(guardian.name)} es tu amigo!`;
+  $('bossBannerTitle').textContent = `¡${capital(guardian.kind)}!`;
+  $('bossBannerText').textContent = `${capital(guardian.name)} protege el tesoro del barco hundido. Escribí 8 frases, incluyendo el espacio. Cada letra bien escrita lo frena y cada frase reinicia su reloj.`;
   $('bossHp').textContent = `${state.boss.hp} / ${BOSS_HITS}`;
   $('bossHealthFill').style.width = `${state.boss.hp / BOSS_HITS * 100}%`;
   $('bossHealth').setAttribute('aria-valuenow', String(state.boss.hp));
   const warning = !state.relaxed && state.mode === 'boss' && state.boss.attackIn <= 1.5;
   $('bossHud').classList.toggle('charging', warning);
-  $('bossAttackHint').textContent = state.relaxed ? 'Sin apuro: escribí las dos palabras y el espacio.' : `${warning ? '¡Prepará los dedos!' : state.boss.hp <= 4 ? '¡Otto aceleró!' : 'Ataque'} · ${Math.ceil(state.boss.attackIn)} s · Cada letra bien escrita lo frena.`;
+  $('bossAttackHint').textContent = state.relaxed ? 'Sin apuro: escribí las dos palabras y el espacio.' : `${warning ? '¡Prepará los dedos!' : state.boss.hp <= 4 ? `¡${capital(guardian.name)} aceleró!` : 'Ataque'} · ${Math.ceil(state.boss.attackIn)} s · Cada letra bien escrita lo frena.`;
 }
 function sync() {
   const canType = typingMode();
@@ -312,7 +318,7 @@ function sync() {
 }
 function start() {
   const level = Number($('level').value);
-  state = createRun(level, $('relaxed').checked, Math.random, { coop: coopActive(), event: season?.id, eventWords: eventWords(season, level) });
+  state = createRun(level, $('relaxed').checked, Math.random, { coop: coopActive(), event: season?.id, eventWords: eventWords(season, LEVELS[level].events) });
   sendHello(); syncClock = 0; emotes.length = 0; o2Seq = 0; o2Pending = []; o2Ack = 0;
   particles.length = 0; lootStart.clear(); Object.assign(anim, { cheer: 0, hurt: 0, type: 0, flip: false });
   if (reducedMotion) state.diveTime = 1.5;
@@ -348,7 +354,7 @@ function finish() {
     state.mode = 'celebrating'; state.treasureTime = state.frenzy ? 1.6 : 0;
     $('diverConsole').hidden = true; $('bossHud').hidden = true; $('bossBanner').hidden = true; $('frenzyHud').hidden = true;
     $('typing').disabled = true; $('targetList').hidden = true;
-    $('status').textContent = state.frenzy ? `¡Qué botín! Atrapaste ${state.frenzy.caught} tesoros del barco.` : '¡Otto se hizo tu amigo! El cofre está abriéndose…';
+    $('status').textContent = state.frenzy ? `¡Qué botín! Atrapaste ${state.frenzy.caught} tesoros del barco.` : `¡${capital(boss().name)} se hizo tu amigo! El cofre está abriéndose…`;
     hint(null); return;
   }
   state.mode = 'results'; $('diverConsole').hidden = true; $('bossHud').hidden = true; $('bossBanner').hidden = true; $('frenzyHud').hidden = true; $('frenzyBanner').hidden = true; $('targetList').hidden = true; $('typing').disabled = true; $('pauseButton').disabled = true; hint(null);
@@ -356,7 +362,7 @@ function finish() {
   const speed = state.elapsed ? Math.round(state.score / (state.elapsed / 60)) : 0;
   $('resultLabel').textContent = state.won ? 'Expedición completa' : 'Hora de subir a la superficie';
   $('resultTitle').textContent = state.won ? '¡Encontraste el tesoro!' : '¡Cada intento te enseña!';
-  $('resultMessage').textContent = state.won ? '¡Completaste las ocho frases de Otto y abriste el tesoro del barco hundido!' : `Llegaste a ${state.depth} metros. Recargá el oxígeno y probá otra vez.`;
+  $('resultMessage').textContent = state.won ? `¡Completaste las ocho frases de ${boss().name} y abriste el tesoro del barco hundido!` : `Llegaste a ${state.depth} metros. Recargá el oxígeno y probá otra vez.`;
   if (state.frenzy) $('resultMessage').textContent += ` En el frenesí atrapaste ${state.frenzy.caught} ${state.frenzy.caught === 1 ? 'tesoro' : 'tesoros'} (+${state.frenzy.points} puntos).`;
   $('resultWords').textContent = state.score; $('resultAccuracy').textContent = `${acc}%`; $('resultSpeed').textContent = speed;
   $('resultPoints').textContent = `${state.points} puntos · ${state.bestStreak} palabras seguidas sin errores`;
@@ -369,8 +375,8 @@ function finish() {
     state.rewarded = computeRewards(state); wallet.coins += state.rewarded.coins; wallet.gems += state.rewarded.gems; wallet.candy += state.rewarded.candy; saveWallet(); void protectStorage();
   }
   const earned = starsFor(state);
-  if (earned > (Number(stars[state.level]) || 0)) {
-    stars[state.level] = earned;
+  if (earned > (Number(stars[LEVELS[state.level].id]) || 0)) {
+    stars[LEVELS[state.level].id] = earned;
     try { localStorage.setItem('buzo-stars-v1', JSON.stringify(stars)); } catch { /* Optional in private browsing. */ }
   }
   $('resultStars').hidden = !earned; $('resultStars').textContent = starText(earned);
@@ -407,9 +413,9 @@ $('typing').addEventListener('input', event => {
     const praise = ['¡Genial!', '¡Muy bien!', '¡Así se hace!'][state.score % 3];
     toast(result.kind === 'whale' ? (state.relaxed ? '¡La ballena te saludó!' : '¡La ballena te regaló oxígeno! +12%')
       : result.kind === 'golden' ? '¡Tiburón dorado! +1 gema al terminar'
-      : result.bossHit ? `¡Tentáculo calmado! +${result.gained}` : state.streak >= 3 ? `¡Racha de ${state.streak}! +${result.gained}` : `${praise} +${result.gained}`);
-    $('status').textContent = result.bossHit ? `¡Bien! +${result.gained} puntos. Quedan ${state.boss.hp} tentáculos por calmar.` : `¡Bien! +${result.gained} puntos. Bajaste a ${state.depth} metros.`;
-    if (result.bossStarted) $('status').textContent = '¡Llegaste al naufragio! Otto custodia el tesoro. Encontraste una reserva de oxígeno.';
+      : result.bossHit ? `¡${capital(boss().part[0])} calmad${boss().part[0].endsWith('a') ? 'a' : 'o'}! +${result.gained}` : state.streak >= 3 ? `¡Racha de ${state.streak}! +${result.gained}` : `${praise} +${result.gained}`);
+    $('status').textContent = result.bossHit ? `¡Bien! +${result.gained} puntos. Quedan ${state.boss.hp} ${boss().part[state.boss.hp === 1 ? 0 : 1]} por calmar.` : `¡Bien! +${result.gained} puntos. Bajaste a ${state.depth} metros.`;
+    if (result.bossStarted) $('status').textContent = `¡Llegaste al tesoro! ${capital(boss().name)} lo custodia. Encontraste una reserva de oxígeno.`;
     $('feedback').textContent = state.relaxed ? '¡Seguí con la próxima palabra!' : 'Palabra completa: +3% de oxígeno.';
   } else if (result.mistakes) {
     beep('miss'); $('feedback').textContent = state.relaxed || state.mode === 'frenzy' ? 'Usá Retroceso para corregir. ¡Vos podés!' : `−${result.mistakes * 5}% de oxígeno. Corregí con Retroceso.`;
@@ -789,7 +795,7 @@ function draw() {
     drawShipwreck(ctx, width * .23, height * (smallScreen ? .71 : .77), Math.min(1, width / 650), t, state.won ? (reducedMotion ? 1 : Math.min(1, (state.treasureTime || 0) / 1.8)) : 0, smallScreen ? { x: 35, y: -45 } : undefined);
     const ottoX = width * .77, ottoY = height * .42, ottoScale = Math.min(1.15, width / 620);
     ottoAt = { x: ottoX, y: ottoY };
-    drawOctopus(ctx, ottoX, ottoY, ottoScale, t, { ...state.boss, theme,
+    drawBoss(ctx, state.boss.kind, ottoX, ottoY, ottoScale, t, { ...state.boss, theme,
       attackTime: reducedMotion ? 0 : state.boss.attackTime,
       charging: !state.relaxed && (state.mode === 'boss' || state.mode === 'paused' && pausedMode === 'boss') && state.boss.attackIn <= 1.5,
       target: { x: (diverX - ottoX) / ottoScale, y: (diverY - ottoY) / ottoScale }
@@ -889,12 +895,12 @@ function frame(now) {
   if (events.length || targetBefore !== state.targetId) {
     sync();
     if (events.includes('bossReady')) {
-      toast('¡Batalla final contra Otto!');
-      $('status').textContent = '¡Batalla final! Escribí ocho frases con su espacio. Cada letra bien escrita frena a Otto.';
-      $('feedback').textContent = 'Dos palabras y un espacio calman un tentáculo.'; $('typing').focus();
+      toast(`¡Batalla final contra ${boss().name}!`);
+      $('status').textContent = `¡Batalla final! Escribí ocho frases con su espacio. Cada letra bien escrita frena a ${boss().name}.`;
+      $('feedback').textContent = `Dos palabras y un espacio calman ${boss().part[0].endsWith('a') ? 'una' : 'un'} ${boss().part[0]}.`; $('typing').focus();
     }
     if (events.includes('bossAttack')) {
-      beep('miss'); hurt(); toast(`¡Otto atacó! −${bossAttackDamage(state)}% O₂`, 'miss'); $('status').textContent = `¡Otto agitó sus tentáculos! −${bossAttackDamage(state)}% de oxígeno.`;
+      beep('miss'); hurt(); toast(`¡${capital(boss().name)} atacó! −${bossAttackDamage(state)}% O₂`, 'miss'); $('status').textContent = `${boss().attack} −${bossAttackDamage(state)}% de oxígeno.`;
       $('feedback').textContent = 'Tu frase sigue intacta. ¡Seguí escribiendo!';
     }
     if (events.includes('frenzyReady')) {

@@ -1,8 +1,25 @@
+// Worlds in learning order. `id` keys saved progress, so the order can change safely.
+// `events` picks the seasonal word list (null: row-only worlds keep their letters).
 export const LEVELS = [
-  { name: 'El arrecife de las primeras letras', words: ['fff', 'jjj', 'fjf', 'jfj', 'asa', 'ala', 'sala', 'las', 'da', 'falla', 'falda', 'sal'], seconds: 28 },
-  { name: 'La laguna de las palabras', words: ['mar', 'ola', 'pez', 'sol', 'sal', 'azul', 'alga', 'isla', 'roca', 'luna', 'faro', 'remo', 'agua', 'bote', 'pato', 'nado'], seconds: 24 },
-  { name: 'La expedición al mar abierto', words: ['buzo', 'coral', 'barco', 'pulpo', 'arena', 'perla', 'delfín', 'océano', 'tiburón', 'estrella', 'caballito', 'cangrejo', 'tesoro', 'ballena', 'esponja', 'pequeño', 'pingüino'], seconds: 30 }
+  { id: 'centro', tip: 'Fila central', name: 'El arrecife de las primeras letras', boss: 'otto', bossInterval: 9, fall: 5.5, reward: { coins: 60, gems: 1 }, events: null, seconds: 28,
+    words: ['fff', 'jjj', 'fjf', 'jfj', 'asa', 'ala', 'sala', 'las', 'da', 'falla', 'falda', 'sal'] },
+  { id: 'arriba', tip: 'Fila de arriba', name: 'El bosque de algas altas', boss: 'pinza', bossInterval: 9, fall: 5.5, reward: { coins: 70, gems: 1 }, events: null, seconds: 27, isNew: true,
+    words: ['ola', 'red', 'isla', 'faro', 'agua', 'pato', 'sopa', 'ropa', 'rosa', 'hoja', 'lago', 'yate', 'popa', 'perla', 'salto', 'kayak', 'algas', 'ostra', 'pulpo', 'puerto', 'pirata', 'tesoro', 'tortuga', 'estrella', 'guitarra'] },
+  { id: 'abajo', tip: 'Fila de abajo', name: 'La fosa de las burbujas', boss: 'medusa', bossInterval: 9, fall: 5.5, reward: { coins: 80, gems: 2 }, events: 0, seconds: 26, isNew: true,
+    words: ['nube', 'boya', 'vela', 'buzo', 'nave', 'cebo', 'ancla', 'barco', 'banco', 'concha', 'cueva', 'brazo', 'marino', 'calamar', 'burbuja', 'ballena', 'cangrejo', 'oxígeno'] },
+  { id: 'laguna', tip: 'Palabras del mar', name: 'La laguna de las palabras', boss: 'otto', bossInterval: 8, fall: 5, reward: { coins: 90, gems: 2 }, events: 0, seconds: 24,
+    words: ['mar', 'ola', 'pez', 'sol', 'sal', 'azul', 'alga', 'isla', 'roca', 'luna', 'faro', 'remo', 'agua', 'bote', 'pato', 'nado'] },
+  { id: 'mar', tip: 'Todo el teclado', name: 'La expedición al mar abierto', boss: 'otto', bossInterval: 10, fall: 5.5, reward: { coins: 120, gems: 3 }, events: 1, seconds: 30,
+    words: ['buzo', 'coral', 'barco', 'pulpo', 'arena', 'perla', 'delfín', 'océano', 'tiburón', 'estrella', 'caballito', 'cangrejo', 'tesoro', 'ballena', 'esponja', 'pequeño', 'pingüino'] }
 ];
+export const levelIndex = id => Math.max(0, LEVELS.findIndex(level => level.id === id));
+// The guardian at the end of each world. `part` is what each phrase calms.
+export const BOSSES = {
+  otto: { short: 'Pulpo', name: 'Otto', title: 'Otto, guardián del naufragio', kind: 'un pulpo gigante', lair: 'El naufragio de Otto', part: ['tentáculo', 'tentáculos'], attack: '¡Otto agitó sus tentáculos!' },
+  pinza: { short: 'Cangrejo', name: 'Don Pinza', title: 'Don Pinza, cangrejo gruñón', kind: 'un cangrejo gigante', lair: 'La cueva de Don Pinza', part: ['pata', 'patas'], attack: '¡Don Pinza tiró un pinzazo!' },
+  medusa: { short: 'Medusa', name: 'la Reina Medusa', title: 'Reina Medusa, la eléctrica', kind: 'una medusa reina', lair: 'El palacio de la Reina Medusa', part: ['tentáculo', 'tentáculos'], attack: '¡La Reina Medusa soltó una chispa!' }
+};
+export const bossOf = level => BOSSES[LEVELS[level]?.boss] || BOSSES.otto;
 export const normalize = value => value.toLocaleLowerCase('es').normalize('NFC');
 export function fingerFor(char) {
   if (normalize(char) === 'ñ') return { color: 'pink', name: 'meñique derecho', home: 'Ñ' };
@@ -22,7 +39,7 @@ export function makeDeck(level, random = Math.random, extra = []) {
   const words = [...LEVELS[level].words, ...extra];
   for (let i = words.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1)); [words[i], words[j]] = [words[j], words[i]]; }
   // Start the first adventure at the index-finger anchors, not at a random word.
-  if (level === 0) return ['fff', 'jjj', ...words.filter(word => !['fff', 'jjj'].includes(word))].slice(0, 12);
+  if (LEVELS[level].id === 'centro') return ['fff', 'jjj', ...words.filter(word => !['fff', 'jjj'].includes(word))].slice(0, 12);
   return words.slice(0, 12);
 }
 export function assessInput(previous, raw, target) {
@@ -43,12 +60,12 @@ export const OXYGEN = { mistake: 5, collision: 22, reward: 3, whale: 12 };
 // Each correct new letter against Otto buys a little time; a finished phrase resets his clock.
 export const BOSS_LETTER_BONUS = .3;
 // After Otto, the crew's boat drops treasure for a few seconds: catch it by typing, double points, no oxygen at stake.
-export const FRENZY = { seconds: 15, intro: 1.5, max: 5, lanes: 5, fall: [5.5, 5, 5.5], gems: 2 };
+export const FRENZY = { seconds: 15, intro: 1.5, max: 5, lanes: 5, gems: 2 };
 // Creature drawn for a word: short words are puffers, long ones hammerheads.
 export function creatureFor(word) { return word.length <= 3 ? 'puffer' : word.length >= 7 ? 'hammer' : 'shark'; }
 export function createRun(level, relaxed = false, random = Math.random, options = {}) {
-  // Seasonal words join the deck from the second level on; the first one trains home-row fingers only.
-  const extra = level > 0 && Array.isArray(options.eventWords) ? options.eventWords.filter(word => typeof word === 'string' && word) : [];
+  // Seasonal words join only the worlds that already use the whole keyboard.
+  const extra = LEVELS[level].events !== null && Array.isArray(options.eventWords) ? options.eventWords.filter(word => typeof word === 'string' && word) : [];
   return {
     words: [...LEVELS[level].words, ...extra], event: options.event || null, golden: 0, whaleSeen: false, whales: 0,
     mode: 'diving', level, relaxed, random, diveTime: 0, elapsed: 0,
@@ -70,7 +87,8 @@ export function computeRewards(state) {
   } else if (!state.won) {
     add('Palabras escritas', state.score * 3);
   } else {
-    add('Nivel completado', 60 + state.level * 30 + Math.floor(state.points / 40), 1 + state.level);
+    const { reward } = LEVELS[state.level];
+    add('Nivel completado', reward.coins + Math.floor(state.points / 40), reward.gems);
     if (state.frenzy?.caught) add('Frenesí del tesoro', state.frenzy.caught * 10, state.frenzy.gems);
     const hits = state.collisions + state.partnerCollisions;
     if (hits === 0) add(state.coop ? '¡Ningún tiburón los tocó!' : '¡Ningún tiburón te tocó!', 120, 3);
@@ -139,9 +157,9 @@ function enterBoss(state) {
   if (!state.coop) state.oxygen = Math.max(state.oxygen, 60);
   const pool = LEVELS[state.level].words.slice(-BOSS_HITS);
   const words = pool.map((word, i) => `${word} ${pool[(i + 3) % pool.length]}`);
-  const interval = [9, 8, 10][state.level];
+  const interval = LEVELS[state.level].bossInterval;
   state.boss = {
-    hp: BOSS_HITS, maxHp: BOSS_HITS, words, wordIndex: 0, introTime: 0,
+    kind: LEVELS[state.level].boss, hp: BOSS_HITS, maxHp: BOSS_HITS, words, wordIndex: 0, introTime: 0,
     attackIn: interval, attackInterval: interval, hitTime: 0, attackTime: 0, defeated: false, reach: 0
   };
   while (state.pendingHits > 0) { state.pendingHits--; partnerBossHit(state); }
@@ -179,7 +197,7 @@ export function dropLoot(state) {
   const gems = f.gems + active.filter(loot => loot.kind === 'gem').length;
   const loot = {
     id: state.nextId++, word, side: 'top', lane, progress: 0, departure: null, flinch: 0, exitTime: 0,
-    kind: gems < FRENZY.gems && state.random() < .12 ? 'gem' : 'coin', duration: FRENZY.fall[state.level] * hurry
+    kind: gems < FRENZY.gems && state.random() < .12 ? 'gem' : 'coin', duration: LEVELS[state.level].fall * hurry
   };
   state.sharks.push(loot); ensureTarget(state); return loot;
 }
@@ -229,7 +247,7 @@ function typeBoss(state, raw) {
     state.input = '';
     if (state.boss.hp === 0) { gained += 300; defeatBoss(state); result.frenzy = state.mode === 'frenzy'; }
     state.points += gained; result.gained = gained; result.bossHit = true;
-    state.effects.push({ text: `−1 tentáculo · +${gained}`, time: 0, kind: 'win' });
+    state.effects.push({ text: `−1 ${bossOf(state.level).part[0]} · +${gained}`, time: 0, kind: 'win' });
   }
   endIfNeeded(state); return result;
 }

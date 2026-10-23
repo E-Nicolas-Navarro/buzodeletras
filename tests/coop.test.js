@@ -37,7 +37,7 @@ test('co-op: team shark hits decide the bonus and winning together pays extra', 
 test('messages from the other device are validated and clamped', () => {
   assert.equal(parseMessage(null), null); assert.equal(parseMessage({ t: 'hack' }), null); assert.equal(parseMessage('x'), null);
   assert.deepEqual(parseMessage({ t: 'o2', d: -500 }), { t: 'o2', d: -100, seq: 0 }); assert.equal(parseMessage({ t: 'o2', d: 'x' }), null);
-  assert.deepEqual(parseMessage({ t: 'start', level: 99, relaxed: 'yes' }), { t: 'start', level: 2, relaxed: false });
+  assert.deepEqual(parseMessage({ t: 'start', level: 99, relaxed: 'yes' }), { t: 'start', level: 4, relaxed: false });
   assert.deepEqual(parseMessage({ t: 'hello', skin: '<img>', gear: { head: 'guitarra', hand: 'guitarra' } }), { t: 'hello', skin: 'clasico', level: 0, gear: { mask: null, fins: null, head: null, hand: 'guitarra', back: null, pet: null, trail: null } });
   assert.equal(parseMessage({ t: 'emote', e: '💣' }), null); assert.equal(parseMessage({ t: 'emote', e: EMOTES[0] }).e, EMOTES[0]);
   assert.equal(parseMessage({ t: 'sync', o: 999 }).o, 100); assert.equal(parseMessage({ t: 'score', v: -4 }).v, 0);

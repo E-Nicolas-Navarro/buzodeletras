@@ -2,6 +2,24 @@
 
 Juego de mecanografía en español para chicos: escribí las palabras de los tiburones para que se alejen del buzo. El buzo salta al agua y se queda en el centro: llegan tiburones de ambos lados y cada palabra lo lleva más profundo. Tras completar 24 palabras llegás al naufragio a 240 metros: superá las ocho frases de Otto para abrir el tesoro. Al quedarse sin oxígeno termina la expedición. Sitio estático, sin cuentas ni anuncios. El modo solo no usa servicios externos; el modo de a dos usa PeerJS (ver más abajo).
 
+## Mundos y guardianes
+
+Cinco mundos en orden de aprendizaje. Cada uno termina en una batalla de ocho frases contra su guardián:
+
+| Mundo | Letras | Guardián |
+|---|---|---|
+| 1 · Fila central | A S D F G H J K L Ñ | Otto, el pulpo |
+| 2 · Fila de arriba | Fila de arriba + fila central | Don Pinza, el cangrejo (calmás sus 8 patas) |
+| 3 · Fila de abajo | Todas, con palabras llenas de Z X C V B N M | La Reina Medusa (sus tentáculos dan chispas) |
+| 4 · Palabras del mar | Todo el teclado, palabras cortas | Otto |
+| 5 · Todo el teclado | Palabras largas con tildes y Ñ | Otto |
+
+El progreso (estrellas y récords) se guarda por mundo (`centro`, `arriba`, `abajo`, `laguna`, `mar`). Las partidas guardadas con la versión de tres niveles se convierten solas, también al restaurar un respaldo viejo.
+
+### Frenesí del tesoro
+
+Al vencer al guardián en modo desafío, durante 15 segundos el barco de la expedición tira monedas y gemas desde la superficie. Se atrapan escribiendo su palabra: **puntos ×2** más un combo por cada atrapada seguida, y sin oxígeno en juego (lo que toca el fondo solo corta el combo). Paga 10 monedas por tesoro y hasta 2 gemas. En práctica no hay frenesí.
+
 ## Probar en tu computadora
 
 Necesitás Node.js 22 o posterior. Desde esta carpeta:
@@ -61,7 +79,7 @@ Al terminar un nivel se ganan **monedas de oro** y **gemas** (se guardan en este
 Se activan solos según la fecha del dispositivo, sin servidor (`events.js`). **Halloween bajo el mar** va del 15 de octubre al 5 de noviembre:
 
 - Calabazas que brillan en el arrecife, medusas fantasma, tiburones con sombrero de bruja o calabaza, y Otto con sombrero de bruja.
-- Desde el nivel 2 se suman palabras del tema (bruja, fantasma, calabaza…). El nivel 1 sigue solo con la fila central.
+- Se suman palabras del tema (bruja, fantasma, calabaza…) en los mundos que usan todo el teclado (fila de abajo, palabras del mar y todo el teclado). Los mundos de la fila central y la fila de arriba conservan solo sus letras.
 - Cada palabra da **caramelos** (+15 si ganás). Con caramelos se compran el buzo esqueleto, el buzo calabaza, el sombrero de bruja, el fantasmita y la estela de murciélagos, solo durante el evento. Lo que compraste queda para siempre.
 - Para probarlo fuera de fecha: `?evento=halloween`. Para apagarlo: `?evento=no`.
 

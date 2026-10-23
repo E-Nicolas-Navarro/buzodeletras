@@ -1,13 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LEVELS, normalize, fingerFor, makeDeck, assessInput, accuracy, createRun, tickRun, typeInRun, activeSharks, targetShark, chooseTarget, spawnShark, capacity, MISSION_WORDS, BOSS_HITS, currentWord } from '../engine.js';
+import { LEVELS, levelIndex, bossOf, normalize, fingerFor, makeDeck, assessInput, accuracy, createRun, tickRun, typeInRun, activeSharks, targetShark, chooseTarget, spawnShark, capacity, MISSION_WORDS, BOSS_HITS, currentWord } from '../engine.js';
 const ready = (level = 0, relaxed = false) => { const state = createRun(level, relaxed, () => .3); tickRun(state, 1.6); return state; };
 const complete = state => { const word = currentWord(state); for (let i = 1; i <= word.length; i++) typeInRun(state, word.slice(0, i)); };
 
 test('decks are unique and first adventure starts at F and J', () => {
-  for (let level = 0; level < 3; level++) { const deck = makeDeck(level); assert.equal(deck.length, 12); assert.equal(new Set(deck).size, 12); }
+  for (let level = 0; level < LEVELS.length; level++) { const deck = makeDeck(level); assert.equal(deck.length, 12); assert.equal(new Set(deck).size, 12); }
   assert.deepEqual(makeDeck(0).slice(0, 2), ['fff', 'jjj']);
   for (const word of LEVELS[0].words) assert.match(word, /^[asdfghjklñ]+$/);
+  // The top-row world adds only the upper keys; every bottom-row word uses a lower key.
+  for (const word of LEVELS[levelIndex('arriba')].words) assert.match(word, /^[qwertyuiopasdfghjklñ]+$/);
+  for (const word of LEVELS[levelIndex('abajo')].words) assert.match(word, /[zxcvbnm]/);
+  assert.equal(new Set(LEVELS.map(level => level.id)).size, LEVELS.length);
+  assert.deepEqual(LEVELS.map(level => bossOf(LEVELS.indexOf(level)).name), ['Otto', 'Don Pinza', 'la Reina Medusa', 'Otto', 'Otto']);
 });
 test('input counts new mistakes, not backspace or unchanged input', () => {
   assert.deepEqual(assessInput('ma', 'mar', 'mar'), { value: 'mar', added: 1, mistakes: 0, valid: true, complete: true });
@@ -87,11 +92,11 @@ test('zero oxygen ends immediately; descent starts the boss instead of declaring
   const points = state.points; tickRun(state, 50); typeInRun(state, 'fff'); assert.equal(state.points, points);
 });
 test('boss intro refills oxygen, pauses safely, and keeps words within the chosen skill level', () => {
-  for (let level = 0; level < 3; level++) {
+  for (let level = 0; level < LEVELS.length; level++) {
     const state = ready(level);
     state.score = 23; state.oxygen = 20; complete(state);
     assert.equal(state.oxygen, 60); assert.equal(state.mode, 'bossIntro');
-    assert.equal(state.boss.words.length, 8);
+    assert.equal(state.boss.words.length, 8); assert.equal(state.boss.kind, LEVELS[level].boss);
     assert.ok(state.boss.words.every(phrase => phrase.split(' ').length === 2 && phrase.split(' ').every(word => LEVELS[level].words.includes(word))));
     state.mode = 'paused'; const snapshot = JSON.stringify(state); tickRun(state, 30);
     assert.equal(JSON.stringify(state), snapshot);
@@ -133,7 +138,7 @@ test('boss defeat and oxygen exhaustion are exclusive; practice mode never attac
 });
 
 test('Otto speeds up halfway and his clock restarts with the faster pace', () => {
-  for (const level of [0, 1, 2]) {
+  for (let level = 0; level < LEVELS.length; level++) {
     const state = ready(level); state.score = 23; complete(state); tickRun(state, 2);
     const interval = state.boss.attackInterval;
     assert.ok(interval <= 10);
@@ -164,10 +169,10 @@ test('rare visitors: the whale gives oxygen and never hurts, golden sharks pay a
   lucky.targetId = gold.id; for (let i = 1; i <= gold.word.length; i++) typeInRun(lucky, gold.word.slice(0, i));
   assert.equal(computeRewards({ ...lucky, won: false }).gems, 1);
 });
-test('seasonal words join the deck from level 2 and candy is earned per word', () => {
+test('seasonal words join only whole-keyboard worlds and candy is earned per word', () => {
   const words = ['bruja', 'gato'];
-  assert.ok(createRun(1, false, Math.random, { eventWords: words, event: 'halloween' }).words.includes('bruja'));
-  assert.ok(!createRun(0, false, Math.random, { eventWords: words }).words.includes('bruja'));
+  for (const id of ['abajo', 'laguna', 'mar']) assert.ok(createRun(levelIndex(id), false, Math.random, { eventWords: words, event: 'halloween' }).words.includes('bruja'), id);
+  for (const id of ['centro', 'arriba']) assert.ok(!createRun(levelIndex(id), false, Math.random, { eventWords: words }).words.includes('bruja'), id);
   const state = { ...createRun(1, false, () => .3, { event: 'halloween' }), score: 10, won: true };
   assert.equal(computeRewards(state).candy, 25);
   assert.equal(computeRewards({ ...createRun(1), score: 10 }).candy, 0);

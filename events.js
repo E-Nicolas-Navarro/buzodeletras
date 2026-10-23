@@ -24,8 +24,8 @@ export function currentEvent(search = '', date = new Date()) {
   if (forced === 'no') return null;
   return EVENTS.find(event => event.id === forced) || eventOn(date);
 }
-// Level 1 trains home-row keys only, so seasonal words start at level 2.
-export function eventWords(event, level) {
-  if (!event || level === 0) return [];
-  return event.words[level - 1] || [];
+// `set` is the world's `events` field: row-only worlds (null) keep their own letters.
+export function eventWords(event, set) {
+  if (!event || set === null || set === undefined) return [];
+  return event.words[set] || [];
 }

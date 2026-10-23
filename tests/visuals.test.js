@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { drawBoat, drawBoatShadow, drawDiver, drawOceanBackdrop, drawOceanForeground, REEF_LAYERS, layerOffset, drawShipwreck, drawOctopus, drawTreasure, drawLoot } from '../visuals.js';
+import { drawBoat, drawBoatShadow, drawDiver, drawOceanBackdrop, drawOceanForeground, REEF_LAYERS, layerOffset, drawShipwreck, drawOctopus, drawTreasure, drawLoot, drawBoss } from '../visuals.js';
 
 function recordingContext() {
   const initial = { globalAlpha: 1, fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter' };
@@ -166,7 +166,7 @@ test('seasons follow the calendar and can be previewed or turned off', () => {
   assert.equal(currentEvent('?evento=halloween', new Date(2026, 6, 1)).id, 'halloween');
   assert.equal(currentEvent('?evento=no', new Date(2026, 9, 31)), null);
   const halloween = eventOn(new Date(2026, 9, 31));
-  assert.deepEqual(eventWords(halloween, 0), []); assert.ok(eventWords(halloween, 2).includes('fantasma'));
+  assert.deepEqual(eventWords(halloween, null), []); assert.ok(eventWords(halloween, 1).includes('fantasma')); assert.ok(eventWords(halloween, 0).includes('bruja'));
 });
 
 import { fingerId, plainKey, createHands, stepHands, drawHands, HOME } from '../hands.js';
@@ -201,5 +201,14 @@ test('frenzy treasure and the boat overhead draw with balanced canvas state', ()
     const recording = recordingContext();
     drawBoatShadow(recording.ctx, 400, 20, .9, time);
     recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
+  }
+});
+test('every world boss draws in every pose with balanced canvas state', () => {
+  const poses = [{ hp: 8 }, { hp: 8, charging: true }, { hp: 6, attackTime: .3 }, { hp: 3, hitTime: .2 }, { hp: 0, defeated: true }, { hp: 8, theme: 'halloween' }];
+  for (const kind of ['otto', 'pinza', 'medusa', 'unknown']) for (const boss of poses) {
+    const recording = recordingContext();
+    drawBoss(recording.ctx, kind, 600, 200, .9, 1.4, { maxHp: 8, ...boss, target: { x: -260, y: 80 } });
+    recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
+    assert.ok(recording.calls.length < 4000);
   }
 });

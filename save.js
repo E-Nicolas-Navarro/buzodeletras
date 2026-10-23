@@ -2,6 +2,7 @@
 // text code (or file) and restore it later or on another device. The checksum only
 // catches typos and accidental damage; it is not protection against editing.
 import { sanitizeWallet } from './skins.js';
+import { LEVELS } from './engine.js';
 const PREFIX = 'BUZO1';
 const SALT = 'buzo-de-letras';
 export const BACKUP_VERSION = 1;
@@ -15,17 +16,27 @@ const toBase64Url = text => btoa(String.fromCharCode(...new TextEncoder().encode
 const fromBase64Url = value => new TextDecoder().decode(Uint8Array.from(atob(value.replace(/-/g, '+').replace(/_/g, '/')), char => char.charCodeAt(0)));
 
 const count = (value, max = 1e9) => Number.isFinite(value) && value > 0 ? Math.min(max, Math.floor(value)) : 0;
+// Progress used to be keyed by level number (three levels); it is now keyed by world id.
+const LEGACY = ['centro', 'laguna', 'mar'];
+const worldOf = key => LEGACY[key] || (LEVELS.some(level => level.id === key) ? key : null);
 export function sanitizeStars(raw) {
   const stars = {};
-  if (raw && typeof raw === 'object' && !Array.isArray(raw)) for (const level of ['0', '1', '2']) if (count(raw[level], 3)) stars[level] = count(raw[level], 3);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return stars;
+  for (const [key, value] of Object.entries(raw)) {
+    const id = worldOf(key);
+    if (id && count(value, 3)) stars[id] = Math.max(stars[id] || 0, count(value, 3));
+  }
   return stars;
 }
 export function sanitizeRecords(raw) {
   const records = {};
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return records;
-  for (const level of [0, 1, 2]) for (const mode of ['practice', 'challenge']) {
-    const entry = raw[`${level}-${mode}`];
-    if (entry && typeof entry === 'object') records[`${level}-${mode}`] = { points: count(entry.points), depth: count(entry.depth, 1000), accuracy: count(entry.accuracy, 100) };
+  for (const [key, entry] of Object.entries(raw)) {
+    const [, world, mode] = /^([a-z0-9]+)-(practice|challenge)$/.exec(key) || [];
+    const id = worldOf(world);
+    if (!id || !entry || typeof entry !== 'object') continue;
+    const clean = { points: count(entry.points), depth: count(entry.depth, 1000), accuracy: count(entry.accuracy, 100) };
+    if (!records[`${id}-${mode}`] || clean.points > records[`${id}-${mode}`].points) records[`${id}-${mode}`] = clean;
   }
   return records;
 }

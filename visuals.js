@@ -942,3 +942,137 @@ export function drawOctopus(ctx, x, y, scale, time = 0, boss = {}) {
   }
   ctx.restore();
 }
+
+// Shared boss pose: how many parts are calmed, whether it is striking or winding up, and where the diver is.
+function bossPose(boss) {
+  const calm = Boolean(boss.defeated);
+  return {
+    calm, quiet: (boss.maxHp || 8) - (boss.hp ?? 8), charging: boss.charging && !calm,
+    strike: !calm && boss.attackTime > 0 ? Math.sin(Math.min(1, boss.attackTime / .6) * Math.PI) : 0,
+    flash: !calm && boss.hitTime > 0, target: boss.target || { x: -200, y: 65 }
+  };
+}
+function bossEyes(ctx, eyes, pose, size = 12) {
+  const { calm, target } = pose;
+  const look = Math.max(-1, Math.min(1, target.x / 200)) * 4;
+  for (const [ex, ey] of eyes) {
+    ellipse(ctx, ex, ey, size, calm ? size * 1.1 : size * .95, '#fff6e6');
+    ellipse(ctx, ex + (calm ? 0 : look), ey + 1, size * .45, size * .6, '#163e51');
+    ellipse(ctx, ex - size * .35, ey - size * .35, size * .16, size * .2, '#fff');
+  }
+}
+// Don Pinza, the grumpy crab of the top-row world. Eight legs tuck in as he calms down.
+export function drawCrab(ctx, x, y, scale, time = 0, boss = {}) {
+  const pose = bossPose(boss), { calm, quiet, charging, strike, flash, target } = pose;
+  ctx.save(); ctx.translate(x, y + 25); ctx.scale(scale, scale);
+  const shell = calm ? '#f2a07b' : flash ? '#ffd4b5' : '#e2644c', dark = calm ? '#c9785b' : '#a8402f';
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // Legs, back to front: four per side.
+  for (let i = 0; i < 8; i++) {
+    const side = i % 2 ? 1 : -1, row = Math.floor(i / 2), tucked = i < quiet || calm;
+    const step = Math.sin(time * (charging ? 9 : 3) + i * 1.7) * (tucked ? 2 : 6);
+    const reach = tucked ? .62 : 1;
+    const hip = [side * (52 + row * 6), 18 + row * 9];
+    const knee = [side * (52 + (48 + row * 6) * reach), (-8 + row * 12) * reach + step];
+    const foot = [side * (52 + (66 + row * 4) * reach), (56 + row * 8) * reach + 14];
+    line(ctx, [hip, knee, foot], dark, 10); line(ctx, [hip, knee, foot], shell, 6);
+  }
+  // Two big claws. The one facing the diver snaps toward him on an attack.
+  for (const side of [-1, 1]) {
+    const attacking = side === -1 && !calm;
+    let clawX = side * 118, clawY = -62 + Math.sin(time * 2 + side) * 4;
+    if (calm) { clawX = side * 92; clawY = -30; }
+    if (attacking && charging) { clawX -= 10; clawY -= 22; }
+    if (attacking) { clawX += (target.x - clawX) * strike; clawY += (target.y - clawY) * strike; }
+    const elbow = [side * 96, -14];
+    line(ctx, [[side * 50, 4], elbow, [clawX, clawY + 18]], dark, 15);
+    line(ctx, [[side * 50, 4], elbow, [clawX, clawY + 18]], attacking && charging ? '#ffbf7d' : shell, 10);
+    const open = calm ? .15 : charging && attacking ? .75 : .35 + Math.sin(time * 4 + side) * .15;
+    // Palm and two curved fingers, mirrored per side; they part wider when he winds up.
+    const claw = attacking && charging ? '#ffbf7d' : shell;
+    ctx.save(); ctx.translate(clawX, clawY); ctx.scale(side, 1); ctx.rotate(-.35);
+    ctx.save(); ctx.translate(-6, -2); ctx.rotate(-open * .7);
+    ctx.fillStyle = dark; ctx.beginPath(); ctx.moveTo(-10, 0); ctx.quadraticCurveTo(-18, -34, 4, -44); ctx.quadraticCurveTo(-4, -26, 6, -4); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.save(); ctx.translate(6, -2); ctx.rotate(open * .5);
+    ctx.fillStyle = claw; ctx.beginPath(); ctx.moveTo(12, 2); ctx.quadraticCurveTo(22, -32, 2, -40); ctx.quadraticCurveTo(6, -22, -6, -2); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ellipse(ctx, 0, 8, 24, 19, claw); ellipse(ctx, -7, 2, 8, 5, '#ffffff33');
+    ctx.restore();
+  }
+  // Wide shell with spots, then eye stalks.
+  const body = ctx.createLinearGradient(0, -30, 0, 60);
+  body.addColorStop(0, calm ? '#ffc29c' : '#f58a6c'); body.addColorStop(.6, shell); body.addColorStop(1, dark);
+  ctx.fillStyle = body; ctx.beginPath(); ctx.moveTo(-82, 18);
+  ctx.bezierCurveTo(-78, -38, 78, -38, 82, 18); ctx.bezierCurveTo(66, 56, -66, 56, -82, 18); ctx.fill();
+  for (const [sx, sy, r] of [[-40, -6, 7], [34, -10, 6], [8, -20, 4], [-12, 22, 5], [52, 14, 4]]) ellipse(ctx, sx, sy, r, r * .7, '#ffffff26');
+  for (const side of [-1, 1]) line(ctx, [[side * 18, -18], [side * 26, -48]], dark, 8);
+  bossEyes(ctx, [[-26, -56], [26, -56]], pose, 13);
+  if (!calm) { line(ctx, [[-40, -74], [-14, -66]], dark, 5); line(ctx, [[14, -66], [40, -74]], dark, 5); }
+  ctx.strokeStyle = '#6e2a22'; ctx.lineWidth = 3; ctx.beginPath();
+  ctx.moveTo(-16, 14); ctx.quadraticCurveTo(0, calm ? 28 : 6, 16, 14); ctx.stroke();
+  ellipse(ctx, -42, 10, 9, 5, '#ffb59a66'); ellipse(ctx, 42, 10, 9, 5, '#ffb59a66');
+  if (charging) for (let i = 0; i < 3; i++) line(ctx, [[-150 - i * 12, -80 + i * 16], [-160 - i * 12, -80 + i * 16]], '#ffdb89', 3);
+  ctx.restore();
+}
+// The Reina Medusa of the bottom-row world: a crowned jellyfish whose tentacles spark.
+export function drawJellyfish(ctx, x, y, scale, time = 0, boss = {}) {
+  const pose = bossPose(boss), { calm, quiet, charging, strike, flash, target } = pose;
+  const pulse = Math.sin(time * 2.2) * (charging ? 2 : 5);
+  ctx.save(); ctx.translate(x, y - 10 + pulse); ctx.scale(scale, scale);
+  const glow = calm ? '#9fd8e8' : flash ? '#ffe3f0' : '#e58ad6', deep = calm ? '#5e9fb8' : '#8a4fb8';
+  ctx.lineCap = 'round';
+  // Eight tentacles hang from the bell; calmed ones curl up short.
+  for (let i = 0; i < 8; i++) {
+    const baseX = -58 + i * 16.5, curled = i < quiet || calm, attacking = i === 0 && !calm;
+    const length = curled ? 70 : 128 + (i % 3) * 18;
+    const points = [];
+    for (let step = 0; step <= 14; step++) {
+      const t = step / 14;
+      let px = baseX + Math.sin(time * 2.4 + i + t * 5) * 10 * t, py = 28 + t * length;
+      if (curled) { const a = t * 4.5; px += Math.sin(a) * 12 * t; py = 28 + t * length * .8 - (1 - Math.cos(a)) * 10 * t; }
+      if (attacking) { px += (target.x - px) * strike * t; py += (target.y - py) * strike * t; }
+      points.push([px, py]);
+    }
+    ctx.strokeStyle = attacking && (charging || strike > 0) ? '#fff59a' : `${glow}cc`; ctx.lineWidth = 7 - (i % 2) * 2;
+    ctx.beginPath(); ctx.moveTo(...points[0]); for (const point of points.slice(1)) ctx.lineTo(...point); ctx.stroke();
+    // Little lights along each tentacle.
+    for (let bead = 3; bead < 14; bead += 4) ellipse(ctx, points[bead][0], points[bead][1], 2.4, 2.4, '#fff6fb99');
+    if (attacking && strike > .2) {
+      // A zigzag spark jumps the last stretch.
+      const [ex, ey] = points[14], zig = [];
+      for (let k = 0; k <= 4; k++) zig.push([ex + (k % 2 ? 7 : -7), ey - 30 + k * 12]);
+      line(ctx, zig, '#fff59a', 3);
+    }
+  }
+  // Translucent bell with a frilled rim.
+  const bell = ctx.createLinearGradient(0, -100, 0, 34);
+  bell.addColorStop(0, calm ? '#d4f3fbdd' : '#f9c6eedd'); bell.addColorStop(.6, `${glow}dd`); bell.addColorStop(1, `${deep}ee`);
+  ctx.fillStyle = bell; ctx.beginPath(); ctx.moveTo(-82, 26);
+  ctx.bezierCurveTo(-90, -70, 90, -70, 82, 26);
+  for (let k = 0; k < 8; k++) { const x0 = 82 - k * 20.5; ctx.quadraticCurveTo(x0 - 10, 40, x0 - 20.5, 26); }
+  ctx.fill();
+  ellipse(ctx, -34, -34, 22, 12, '#ffffff33'); ellipse(ctx, 0, 6, 54, 14, `${deep}55`);
+  // A golden crown, tilted a little: she is a queen.
+  ctx.save(); ctx.translate(4, -66); ctx.rotate(.08);
+  polygon(ctx, [[-30, 6], [-34, -24], [-16, -8], [0, -32], [16, -8], [34, -24], [30, 6]], '#f1c453');
+  rounded(ctx, -31, 0, 62, 9, 3, '#d9a531');
+  for (const [cx, color] of [[-17, '#5fd0e0'], [0, '#ef6f6c'], [17, '#5fd0e0']]) ellipse(ctx, cx, 4.5, 3.5, 3.5, color);
+  for (const [cx, cy] of [[-34, -24], [0, -32], [34, -24]]) ellipse(ctx, cx, cy, 3.5, 3.5, '#fff1c2');
+  if (boss.theme === 'halloween') polygon(ctx, [[-8, -34], [8, -34], [0, -50]], '#3b2457');
+  ctx.restore();
+  bossEyes(ctx, [[-24, -12], [22, -12]], pose, 12);
+  // Long lashes, and brows only while she is cross.
+  for (const ex of [-24, 22]) for (const k of [-1, 0, 1]) line(ctx, [[ex + k * 6, -24], [ex + k * 9, -31]], '#4a2a6b', 2);
+  if (!calm) { line(ctx, [[-38, -36], [-12, -30]], '#4a2a6b', 4); line(ctx, [[10, -30], [36, -36]], '#4a2a6b', 4); }
+  ctx.strokeStyle = '#4a2a6b'; ctx.lineWidth = 3; ctx.beginPath();
+  ctx.moveTo(-12, 10); ctx.quadraticCurveTo(0, calm ? 22 : 4, 12, 10); ctx.stroke();
+  ellipse(ctx, -40, 4, 8, 4, '#ff9ec466'); ellipse(ctx, 38, 4, 8, 4, '#ff9ec466');
+  if (charging) for (let i = 0; i < 4; i++) {
+    const a = time * 5 + i * 1.6, sx = Math.cos(a) * 100, sy = -20 + Math.sin(a) * 60;
+    line(ctx, [[sx - 6, sy - 6], [sx + 2, sy], [sx - 2, sy + 4], [sx + 6, sy + 10]], '#fff59a', 2.5);
+  }
+  ctx.restore();
+}
+const BOSS_ART = { otto: drawOctopus, pinza: drawCrab, medusa: drawJellyfish };
+export function drawBoss(ctx, kind, x, y, scale, time = 0, boss = {}) { (BOSS_ART[kind] || drawOctopus)(ctx, x, y, scale, time, boss); }

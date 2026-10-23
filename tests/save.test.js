@@ -13,7 +13,8 @@ test('backup round-trips wallet, stars, records and sound', () => {
   assert.match(code, /^BUZO1-[A-Za-z0-9_-]+-[0-9a-f]{8}$/);
   assert.equal(data.wallet.coins, 300); assert.equal(data.wallet.gems, 6);
   assert.deepEqual(data.wallet.owned, ['clasico', 'coral', 'guitarra']); assert.equal(data.wallet.equipped, 'coral'); assert.equal(data.wallet.gear.hand, 'guitarra');
-  assert.deepEqual(data.stars, { 0: 3, 1: 2 }); assert.equal(data.records['0-challenge'].points, 2590); assert.equal(data.sound, false); assert.equal(data.at, 1000);
+  // Old saves used level numbers (0, 1, 2); they come back keyed by world.
+  assert.deepEqual(data.stars, { centro: 3, laguna: 2 }); assert.equal(data.records['centro-challenge'].points, 2590); assert.equal(data.sound, false); assert.equal(data.at, 1000);
 });
 test('damaged, edited or foreign codes are rejected', () => {
   const code = makeBackup(progress());
@@ -28,7 +29,11 @@ test('imported data is cleaned: no negative coins, unknown items or fake stars',
   const dirty = { wallet: { coins: -5, gems: 1e12, owned: ['dorado', 'hack'], equipped: 'hack', gear: { head: 'dorado' } }, stars: { 0: 99, 7: 3, x: 1 }, records: { '0-challenge': { points: 'x', depth: 5000, accuracy: 500 }, '9-challenge': { points: 1 } } };
   const data = readBackup(makeBackup(dirty));
   assert.equal(data.wallet.coins, 0); assert.deepEqual(data.wallet.owned, ['clasico', 'dorado']); assert.equal(data.wallet.gear.head, null);
-  assert.deepEqual(data.stars, { 0: 3 }); assert.deepEqual(data.records, { '0-challenge': { points: 0, depth: 1000, accuracy: 100 } });
+  assert.deepEqual(data.stars, { centro: 3 }); assert.deepEqual(data.records, { 'centro-challenge': { points: 0, depth: 1000, accuracy: 100 } });
+});
+test('world ids round-trip and the new worlds are kept', () => {
+  const data = readBackup(makeBackup({ ...progress(), stars: { arriba: 2, abajo: 1, mar: 3, nope: 3 }, records: { 'abajo-practice': { points: 40, depth: 50, accuracy: 90 } } }));
+  assert.deepEqual(data.stars, { arriba: 2, abajo: 1, mar: 3 }); assert.equal(data.records['abajo-practice'].points, 40);
 });
 test('backup reminders appear only when there is progress and the backup is old', () => {
   const now = 100 * DAY, fresh = emptyWallet(), played = progress().wallet;

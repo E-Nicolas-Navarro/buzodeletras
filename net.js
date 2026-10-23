@@ -3,6 +3,8 @@
 // A dropped connection is not the end: both sides keep the room for a grace period
 // and the guest dials again, so a wifi hiccup does not ruin the dive.
 import { skinById, accessoryById, SLOTS } from './skins.js';
+import { LEVELS } from './engine.js';
+const LAST_LEVEL = LEVELS.length - 1;
 export const PEER_SRC = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
 export const PEER_SRI = 'sha384-nlUQ8ZqCbvStErob+biJNzSgltf6urV3VGqhfIfzhmg9RXmpeRm76ELw0pYnKlTR';
 export const ROOM_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -39,9 +41,9 @@ export function parseMessage(raw) {
     case 'hello': {
       const gear = {};
       for (const { id: slot } of SLOTS) { const item = accessoryById(raw.gear?.[slot]); gear[slot] = item?.slot === slot ? item.id : null; }
-      return { t: 'hello', skin: skinById(raw.skin).id, level: Math.min(2, count(raw.level, 2)), gear };
+      return { t: 'hello', skin: skinById(raw.skin).id, level: count(raw.level, LAST_LEVEL), gear };
     }
-    case 'start': return { t: 'start', level: Math.min(2, count(raw.level, 2)), relaxed: raw.relaxed === true };
+    case 'start': return { t: 'start', level: count(raw.level, LAST_LEVEL), relaxed: raw.relaxed === true };
     // Oxygen changes are numbered so the host can confirm which ones it applied.
     case 'o2': return Number.isFinite(raw.d) ? { t: 'o2', d: Math.max(-100, Math.min(100, raw.d)), seq: count(raw.seq, 1e9) } : null;
     case 'sync': return { t: 'sync', o: Math.min(100, count(raw.o, 100)), ack: count(raw.ack, 1e9) };

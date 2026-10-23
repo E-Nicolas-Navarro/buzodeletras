@@ -19,7 +19,7 @@ test('co-op: boss hits are shared, queued before the boss appears, and win at ze
   state.partnerScore = MISSION_WORDS; refreshRun(state);
   assert.equal(state.boss.hp, BOSS_HITS - 2); assert.equal(state.pendingHits, 0);
   for (let i = 0; i < BOSS_HITS - 2; i++) partnerBossHit(state);
-  assert.equal(state.boss.hp, 0); assert.equal(state.won, true); assert.equal(state.mode, 'ended');
+  assert.equal(state.boss.hp, 0); assert.equal(state.won, true); assert.equal(state.mode, 'frenzy');
   partnerBossHit(state); assert.equal(state.boss.hp, 0);
 });
 test('co-op: boss damage is halved per device and no solo oxygen crate is given', () => {

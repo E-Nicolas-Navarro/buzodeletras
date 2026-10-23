@@ -26,7 +26,7 @@ class Element {
 }
 let focused = '';
 for (const reducedMotion of [false, true]) test(`UI: full expedition, victory reveal, pause and restart (reduced motion: ${reducedMotion})`, async () => {
-  const ids = ['scene', 'level', 'relaxed', 'record', 'keyboard', 'fingerHint', 'wordDisplay', 'depth', 'score', 'air', 'typing', 'status', 'feedback', 'welcome', 'results', 'pauseOverlay', 'pauseButton', 'resultLabel', 'resultTitle', 'resultMessage', 'resultWords', 'resultAccuracy', 'resultSpeed', 'againButton', 'resumeButton', 'startButton', 'homeButton', 'exitButton', 'soundButton', 'guideButton', 'handGuide', 'helpButton', 'help', 'closeHelp', 'helpReady', 'nextButton', 'targetList', 'points', 'oxygenFill', 'resultPoints', 'diverConsole', 'bossHud', 'bossBanner', 'scoreLabel', 'bossHp', 'bossHealth', 'bossHealthFill', 'bossAttackHint', 'oxygenHud', 'oxygenMeter', 'walletCoins', 'walletGems', 'shopButton', 'resultShopButton', 'shop', 'closeShop', 'skinGrid', 'shopCoins', 'shopGems', 'shopMessage', 'rewards', 'toast', 'coach', 'levelCards', 'resultStars', 'shopPreview', 'shopTabs', 'walletCoinsWrap', 'coopButton', 'coopBanner', 'coopText', 'leaveRoom', 'earn', 'coop', 'closeCoop', 'coopMenu', 'hostButton', 'codeInput', 'joinButton', 'coopWait', 'roomCode', 'cancelRoom', 'coopMessage', 'partnerHud', 'partnerText', 'emoteBar', 'coopResult', 'progressButton', 'progress', 'closeProgress', 'backupCode', 'copyBackup', 'downloadBackup', 'restoreInput', 'restoreFile', 'checkRestore', 'confirmRestore', 'progressMessage', 'progressStatus', 'storageStatus', 'walletCandyWrap', 'walletCandy', 'shopCandyWrap', 'shopCandy', 'dropNotice', 'inviteLink', 'copyInvite', 'eventBanner', 'levelLabel', 'hudBar', 'idlePanel', 'handsCanvas', 'handsButton'];
+  const ids = ['scene', 'level', 'relaxed', 'record', 'keyboard', 'fingerHint', 'wordDisplay', 'depth', 'score', 'air', 'typing', 'status', 'feedback', 'welcome', 'results', 'pauseOverlay', 'pauseButton', 'resultLabel', 'resultTitle', 'resultMessage', 'resultWords', 'resultAccuracy', 'resultSpeed', 'againButton', 'resumeButton', 'startButton', 'homeButton', 'exitButton', 'soundButton', 'guideButton', 'handGuide', 'helpButton', 'help', 'closeHelp', 'helpReady', 'nextButton', 'targetList', 'points', 'oxygenFill', 'resultPoints', 'diverConsole', 'bossHud', 'bossBanner', 'scoreLabel', 'bossHp', 'bossHealth', 'bossHealthFill', 'bossAttackHint', 'oxygenHud', 'oxygenMeter', 'walletCoins', 'walletGems', 'shopButton', 'resultShopButton', 'shop', 'closeShop', 'skinGrid', 'shopCoins', 'shopGems', 'shopMessage', 'rewards', 'toast', 'coach', 'levelCards', 'resultStars', 'shopPreview', 'shopTabs', 'walletCoinsWrap', 'coopButton', 'coopBanner', 'coopText', 'leaveRoom', 'earn', 'coop', 'closeCoop', 'coopMenu', 'hostButton', 'codeInput', 'joinButton', 'coopWait', 'roomCode', 'cancelRoom', 'coopMessage', 'partnerHud', 'partnerText', 'emoteBar', 'coopResult', 'progressButton', 'progress', 'closeProgress', 'backupCode', 'copyBackup', 'downloadBackup', 'restoreInput', 'restoreFile', 'checkRestore', 'confirmRestore', 'progressMessage', 'progressStatus', 'storageStatus', 'walletCandyWrap', 'walletCandy', 'shopCandyWrap', 'shopCandy', 'dropNotice', 'inviteLink', 'copyInvite', 'eventBanner', 'levelLabel', 'hudBar', 'idlePanel', 'handsCanvas', 'handsButton', 'frenzyHud', 'frenzyBanner', 'frenzyTime', 'frenzyFill', 'frenzyMeter', 'frenzyInfo'];
   const elements = Object.fromEntries(ids.map(id => [id, new Element(id)]));
   const label = new Element(); elements.level.value = '0'; elements.relaxed.checked = true;
   const document = new Element();
@@ -115,6 +115,21 @@ for (const reducedMotion of [false, true]) test(`UI: full expedition, victory re
     advance(2); for (let i = 0; i < 8; i++) { complete(); advance(.1); }
     if (!reducedMotion) advance(3);
     assert.equal(elements.results.hidden, false);
+    // A challenge-mode win is followed by the treasure frenzy, then the results.
+    elements.homeButton.onclick(); elements.relaxed.checked = false;
+    elements.startButton.onclick(); advance(2);
+    for (let i = 0; i < 24; i++) { complete(); advance(.1); }
+    advance(2); for (let i = 0; i < 8; i++) { complete(); advance(.1); }
+    assert.equal(elements.frenzyBanner.hidden, false); assert.equal(elements.bossHud.hidden, true);
+    assert.equal(elements.oxygenHud.hidden, true); assert.equal(elements.results.hidden, true);
+    advance(1.5); assert.equal(elements.frenzyBanner.hidden, true); assert.equal(elements.frenzyHud.hidden, false);
+    assert.equal(elements.typing.disabled, false); assert.match(elements.targetList.children[0].textContent, /^↓ /);
+    complete(); advance(.1); assert.equal(elements.score.textContent, '1'); assert.equal(elements.scoreLabel.textContent, 'Tesoro');
+    elements.pauseButton.onclick(); advance(30); assert.equal(elements.results.hidden, true); elements.resumeButton.onclick();
+    advance(16); if (!reducedMotion) advance(2);
+    assert.equal(elements.results.hidden, false); assert.equal(elements.frenzyHud.hidden, true);
+    assert.match(elements.resultMessage.textContent, /frenesí atrapaste 1 tesoro /);
+    assert.ok(elements.rewards.children.some(row => /Frenesí del tesoro/.test(row.textContent)));
 
   } finally {
     Object.assign(globalThis, saved);

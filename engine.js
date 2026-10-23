@@ -42,6 +42,8 @@ export const BOSS_ATTACK_DAMAGE = 18;
 export const OXYGEN = { mistake: 5, collision: 22, reward: 3, whale: 12 };
 // Each correct new letter against Otto buys a little time; a finished phrase resets his clock.
 export const BOSS_LETTER_BONUS = .3;
+// After Otto, the crew's boat drops treasure for a few seconds: catch it by typing, double points, no oxygen at stake.
+export const FRENZY = { seconds: 15, intro: 1.5, max: 5, lanes: 5, fall: [5.5, 5, 5.5], gems: 2 };
 // Creature drawn for a word: short words are puffers, long ones hammerheads.
 export function creatureFor(word) { return word.length <= 3 ? 'puffer' : word.length >= 7 ? 'hammer' : 'shark'; }
 export function createRun(level, relaxed = false, random = Math.random, options = {}) {
@@ -69,6 +71,7 @@ export function computeRewards(state) {
     add('Palabras escritas', state.score * 3);
   } else {
     add('Nivel completado', 60 + state.level * 30 + Math.floor(state.points / 40), 1 + state.level);
+    if (state.frenzy?.caught) add('Frenesí del tesoro', state.frenzy.caught * 10, state.frenzy.gems);
     const hits = state.collisions + state.partnerCollisions;
     if (hits === 0) add(state.coop ? '¡Ningún tiburón los tocó!' : '¡Ningún tiburón te tocó!', 120, 3);
     else if (hits <= 2) add(state.coop ? 'Pocos tiburones los alcanzaron' : 'Pocos tiburones te alcanzaron', 50, 1);
@@ -127,6 +130,7 @@ export function spawnShark(state) {
 }
 export function currentWord(state) {
   if (['boss', 'bossIntro'].includes(state.mode)) return state.boss.words[state.boss.wordIndex];
+  if (state.mode === 'frenzy' && state.frenzy.intro > 0) return null;
   return targetShark(state)?.word;
 }
 function enterBoss(state) {
@@ -151,7 +155,33 @@ export function partnerBossHit(state) {
   if (state.boss.hp <= 0 || !['bossIntro', 'boss'].includes(state.mode)) return;
   state.boss.hp--; state.boss.hitTime = .5;
   calmBoss(state.boss);
-  if (state.boss.hp === 0) { state.boss.defeated = true; state.won = true; state.mode = 'ended'; state.points += 300; }
+  if (state.boss.hp === 0) { state.points += 300; defeatBoss(state); }
+}
+// Otto becomes a friend. In challenge mode the treasure frenzy follows; practice ends right away.
+function defeatBoss(state) {
+  state.boss.defeated = true; state.won = true; state.input = '';
+  if (state.relaxed) { state.mode = 'ended'; return; }
+  state.mode = 'frenzy'; state.sharks = []; state.targetId = null;
+  state.frenzy = { time: FRENZY.seconds, intro: FRENZY.intro, spawnIn: 0, caught: 0, missed: 0, gems: 0, combo: 0, bestCombo: 0, points: 0 };
+}
+// Treasure falls from the boat into one of a few columns, never on top of a fresh one.
+export function dropLoot(state) {
+  if (state.mode !== 'frenzy') return null;
+  const f = state.frenzy, active = activeSharks(state);
+  if (active.length >= FRENZY.max) return null;
+  const pool = state.words.filter(word => !active.some(loot => loot.word[0] === word[0]));
+  const lanes = [...Array(FRENZY.lanes).keys()].filter(lane => !active.some(loot => loot.lane === lane && loot.progress < .4));
+  if (!pool.length || !lanes.length) return null;
+  const word = pool[Math.floor(state.random() * pool.length)];
+  const lane = lanes[Math.floor(state.random() * lanes.length)];
+  // It speeds up as the clock runs out.
+  const hurry = 1 - .35 * (1 - f.time / FRENZY.seconds);
+  const gems = f.gems + active.filter(loot => loot.kind === 'gem').length;
+  const loot = {
+    id: state.nextId++, word, side: 'top', lane, progress: 0, departure: null, flinch: 0, exitTime: 0,
+    kind: gems < FRENZY.gems && state.random() < .12 ? 'gem' : 'coin', duration: FRENZY.fall[state.level] * hurry
+  };
+  state.sharks.push(loot); ensureTarget(state); return loot;
 }
 // A calmed tentacle resets Otto's clock. Halfway through he gets faster.
 function calmBoss(boss) {
@@ -159,6 +189,7 @@ function calmBoss(boss) {
   boss.attackIn = boss.attackInterval;
 }
 function endIfNeeded(state) {
+  if (state.mode === 'frenzy') return;
   if (state.oxygen <= 0) {
     state.oxygen = 0; state.won = false; state.mode = 'ended';
   } else if (state.mode === 'playing' && state.score + state.partnerScore >= MISSION_WORDS) {
@@ -170,7 +201,7 @@ function recordInput(state, raw, word) {
   state.input = result.value; state.attempts += result.added; state.mistakes += result.mistakes;
   if (result.mistakes) {
     state.streak = 0;
-    if (!state.relaxed) state.oxygen = Math.max(0, state.oxygen - result.mistakes * OXYGEN.mistake);
+    if (!state.relaxed && state.mode !== 'frenzy') state.oxygen = Math.max(0, state.oxygen - result.mistakes * OXYGEN.mistake);
   }
   return result;
 }
@@ -196,16 +227,70 @@ function typeBoss(state, raw) {
     let gained = result.value.length * 10 + 50;
     if (!state.relaxed) state.oxygen = Math.min(100, state.oxygen + OXYGEN.reward);
     state.input = '';
-    if (state.boss.hp === 0) {
-      state.boss.defeated = true; state.won = true; state.mode = 'ended'; gained += 300;
-    }
+    if (state.boss.hp === 0) { gained += 300; defeatBoss(state); result.frenzy = state.mode === 'frenzy'; }
     state.points += gained; result.gained = gained; result.bossHit = true;
     state.effects.push({ text: `−1 tentáculo · +${gained}`, time: 0, kind: 'win' });
   }
   endIfNeeded(state); return result;
 }
+function typeFrenzy(state, raw) {
+  const f = state.frenzy;
+  if (f.intro > 0) return { ignored: true };
+  const normalized = normalize(raw);
+  if (!state.input && normalized) state.targetId = nearestShark(state, normalized[0])?.id ?? state.targetId;
+  const target = targetShark(state);
+  if (!target) return { ignored: true };
+  const result = recordInput(state, raw, target.word);
+  if (result.mistakes) f.combo = 0;
+  if (result.added && !result.mistakes) target.flinch = .25;
+  if (result.complete) {
+    f.caught++; f.combo++; f.bestCombo = Math.max(f.bestCombo, f.combo);
+    state.streak++; state.bestStreak = Math.max(state.bestStreak, state.streak);
+    // Double points, plus a growing combo while nothing is dropped or mistyped.
+    const gained = (target.word.length * 10 + Math.min(f.combo, 10) * 5) * 2;
+    state.points += gained; f.points += gained;
+    if (target.kind === 'gem') f.gems++;
+    target.departure = 'caught'; target.exitTime = 0;
+    state.effects.push({ text: target.kind === 'gem' ? '+1 gema' : `+${gained} ×2`, time: 0, kind: 'win' });
+    result.kind = target.kind; result.loot = true; result.gained = gained; result.combo = f.combo;
+    state.targetId = null; state.input = ''; ensureTarget(state);
+    f.spawnIn = Math.min(f.spawnIn, .3);
+  } else if (!state.input) {
+    state.targetId = nearestShark(state)?.id ?? null;
+  }
+  return result;
+}
+function tickFrenzy(state, dt) {
+  const f = state.frenzy, events = [];
+  if (f.intro > 0) {
+    f.intro = Math.max(0, f.intro - dt);
+    if (f.intro === 0) { dropLoot(state); f.spawnIn = .8; events.push('frenzyReady'); }
+    return events;
+  }
+  f.time = Math.max(0, f.time - dt);
+  for (const loot of state.sharks) {
+    loot.flinch = Math.max(0, loot.flinch - dt);
+    if (loot.departure) { loot.exitTime += dt; continue; }
+    loot.progress = Math.min(1, loot.progress + dt / loot.duration);
+    // Missed treasure just sinks into the sand: it only breaks the combo.
+    if (loot.progress >= 1) { loot.departure = 'lost'; loot.exitTime = 0; f.missed++; f.combo = 0; events.push('lootLost'); }
+  }
+  state.sharks = state.sharks.filter(loot => !loot.departure || loot.exitTime < .6);
+  ensureTarget(state);
+  if (f.time <= 0) {
+    state.mode = 'ended'; state.sharks = []; state.targetId = null; state.input = '';
+    events.push('frenzyOver'); return events;
+  }
+  f.spawnIn -= dt;
+  if (f.spawnIn <= 0 || !activeSharks(state).length) {
+    if (dropLoot(state)) events.push('drop');
+    f.spawnIn = .75;
+  }
+  return events;
+}
 export function typeInRun(state, raw) {
   if (state.mode === 'boss') return typeBoss(state, raw);
+  if (state.mode === 'frenzy') return typeFrenzy(state, raw);
   if (state.mode !== 'playing') return { ignored: true };
   const normalized = normalize(raw);
   // The first letter selects a shark; subsequent letters stay locked to it.
@@ -237,7 +322,7 @@ export function typeInRun(state, raw) {
   endIfNeeded(state); result.bossStarted = state.mode === 'bossIntro'; return result;
 }
 export function tickRun(state, dt) {
-  if (!['playing', 'diving', 'bossIntro', 'boss'].includes(state.mode)) return [];
+  if (!['playing', 'diving', 'bossIntro', 'boss', 'frenzy'].includes(state.mode)) return [];
   const events = [];
   if (state.mode === 'diving') {
     state.diveTime = Math.min(1.6, state.diveTime + dt);
@@ -250,9 +335,11 @@ export function tickRun(state, dt) {
     if (state.boss.introTime >= 2) { state.mode = 'boss'; events.push('bossReady'); }
     return events;
   }
-  state.elapsed += dt;
   for (const effect of state.effects) effect.time += dt;
   state.effects = state.effects.filter(effect => effect.time < 1.2);
+  // The frenzy is a bonus: it does not count toward typing speed.
+  if (state.mode === 'frenzy') return tickFrenzy(state, dt);
+  state.elapsed += dt;
   if (state.mode === 'boss') {
     state.boss.hitTime = Math.max(0, state.boss.hitTime - dt);
     state.boss.attackTime = Math.max(0, state.boss.attackTime - dt);

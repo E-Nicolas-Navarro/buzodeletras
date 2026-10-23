@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { drawBoat, drawDiver, drawOceanBackdrop, drawOceanForeground, REEF_LAYERS, layerOffset, drawShipwreck, drawOctopus, drawTreasure } from '../visuals.js';
+import { drawBoat, drawBoatShadow, drawDiver, drawOceanBackdrop, drawOceanForeground, REEF_LAYERS, layerOffset, drawShipwreck, drawOctopus, drawTreasure, drawLoot } from '../visuals.js';
 
 function recordingContext() {
   const initial = { globalAlpha: 1, fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter' };
@@ -142,6 +142,7 @@ test('the oxygen meter clears tall hats: diverTop grows with what the diver wear
   for (const hat of ACCESSORIES.filter(item => item.slot === 'head')) assert.ok(diverTop('clasico', { head: hat.id }) < bare - 15, hat.id);
   assert.ok(diverTop('dorado', {}) < bare); assert.ok(diverTop('clasico', { hand: 'tridente' }) < bare);
   assert.equal(diverTop('clasico', { mask: 'mascara-sol' }), bare);
+  assert.ok(diverTop('clasico', { hand: 'globo' }) < bare - 40);
 });
 test('creatures and pets draw in every state, including the Halloween costume', () => {
   for (const kind of ['shark', 'golden', 'hammer', 'puffer', 'whale', 'unknown']) for (const options of [{}, { flip: true, progress: .8 }, { fleeing: true, time: 3 }, { flinch: .2, costume: 'halloween', id: 2 }, { costume: 'halloween', id: 3 }]) {
@@ -189,4 +190,16 @@ test('ghost hands: each letter maps to its finger and only that finger reaches o
     recording.assertBalanced(); assert.equal(recording.properties().globalAlpha, 1);
   }
   const empty = recordingContext(); drawHands(empty.ctx, createHands(), { keys: {} }, 600, 260); empty.assertBalanced();
+});
+test('frenzy treasure and the boat overhead draw with balanced canvas state', () => {
+  for (const kind of ['coin', 'gem']) for (const options of [{}, { time: 2.2, id: 4, flinch: .2 }, { caught: .5, time: 1 }, { caught: 1 }]) {
+    const recording = recordingContext();
+    drawLoot(recording.ctx, kind, 300, 200, .75, options);
+    recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
+  }
+  for (const time of [0, 3.7]) {
+    const recording = recordingContext();
+    drawBoatShadow(recording.ctx, 400, 20, .9, time);
+    recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
+  }
 });

@@ -179,7 +179,8 @@ test('a steady typing pace can win Otto, but a slow pace runs out of oxygen', ()
       for (let tick = 0; tick < secondsPerPhrase * 10 && state.mode === 'boss'; tick++) tickRun(state, .1);
       if (state.mode === 'boss') complete(state);
     }
-    assert.equal(state.mode, 'ended');
+    // A win in challenge mode opens the treasure frenzy; a loss ends the dive.
+    assert.equal(state.mode, secondsPerPhrase === 4 ? 'frenzy' : 'ended');
     assert.equal(state.won, secondsPerPhrase === 4);
   }
 });
@@ -237,4 +238,41 @@ import { starsFor } from '../engine.js';
 test('stars: fewer shark hits earn more stars, only for won challenge runs', () => {
   assert.equal(starsFor(won()), 3); assert.equal(starsFor(won({ collisions: 2 })), 2); assert.equal(starsFor(won({ collisions: 3 })), 1);
   assert.equal(starsFor(won({ won: false })), 0); assert.equal(starsFor(won({ relaxed: true })), 0);
+});
+
+import { FRENZY, dropLoot } from '../engine.js';
+const toFrenzy = () => {
+  const state = ready(1); state.score = MISSION_WORDS - 1; complete(state); tickRun(state, 2);
+  for (let i = 0; i < BOSS_HITS; i++) complete(state);
+  return state;
+};
+test('beating Otto in challenge mode starts a treasure frenzy with double points and no oxygen at stake', () => {
+  const state = toFrenzy();
+  assert.equal(state.mode, 'frenzy'); assert.equal(state.won, true); assert.equal(state.boss.defeated, true);
+  assert.equal(currentWord(state), null); assert.equal(typeInRun(state, 'x').ignored, true);
+  assert.deepEqual(tickRun(state, FRENZY.intro), ['frenzyReady']);
+  assert.equal(activeSharks(state).length, 1); assert.equal(targetShark(state).side, 'top');
+  const oxygen = state.oxygen, points = state.points;
+  typeInRun(state, '@'); assert.equal(state.oxygen, oxygen); assert.equal(state.frenzy.combo, 0); typeInRun(state, '');
+  const word = currentWord(state); complete(state);
+  assert.equal(state.frenzy.caught, 1); assert.equal(state.points - points, (word.length * 10 + 5) * 2);
+  // Treasure that reaches the sand only breaks the combo.
+  for (let i = 0; i < 20; i++) tickRun(state, .1);
+  const loot = activeSharks(state)[0]; loot.progress = .999;
+  assert.ok(tickRun(state, .1).includes('lootLost')); assert.equal(state.oxygen, oxygen); assert.equal(state.frenzy.combo, 0);
+  assert.ok(activeSharks(state).length <= FRENZY.max);
+  assert.ok(new Set(activeSharks(state).map(item => item.word[0])).size === activeSharks(state).length);
+  for (let i = 0; i < FRENZY.seconds * 10 && state.mode === 'frenzy'; i++) tickRun(state, .1);
+  assert.equal(state.mode, 'ended'); assert.equal(state.won, true); assert.equal(state.sharks.length, 0);
+  assert.equal(dropLoot(state), null);
+});
+test('the frenzy pays coins per treasure and at most a couple of gems; practice skips it', () => {
+  const state = toFrenzy(); tickRun(state, FRENZY.intro);
+  for (let i = 0; i < 40 && state.mode === 'frenzy'; i++) { if (currentWord(state)) complete(state); tickRun(state, .35); }
+  assert.ok(state.frenzy.caught >= 10); assert.ok(state.frenzy.gems <= FRENZY.gems);
+  const bonus = computeRewards(state).items.find(item => item.label === 'Frenesí del tesoro');
+  assert.equal(bonus.coins, state.frenzy.caught * 10); assert.equal(bonus.gems, state.frenzy.gems);
+  const practice = ready(0, true); practice.score = MISSION_WORDS - 1; complete(practice); tickRun(practice, 2);
+  for (let i = 0; i < BOSS_HITS; i++) complete(practice);
+  assert.equal(practice.mode, 'ended'); assert.equal(practice.frenzy, undefined);
 });

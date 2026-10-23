@@ -87,13 +87,14 @@ function bat(ctx, x, y, size, flap, color) {
 }
 // Top of the drawing (diver units, before scaling) for each tall piece, so HUDs can sit above it.
 const HAT_TOP = { 'sombrero-copa': -116, 'sombrero-vaquero': -102, 'gorro-cumple': -124, maceta: -132, 'sombrero-bruja': -138 };
+const HAND_TOP = { tridente: -112, globo: -136 };
 const EXTRA_TOP = { crown: -99, antennae: -98, sharkHood: -102, pumpkin: -90 };
 export function diverTop(skinId = 'clasico', gear = {}) {
   const skin = skinById(skinId);
   let top = -78;
   if (gear.head) top = Math.min(top, HAT_TOP[gear.head] ?? top);
   else if (EXTRA_TOP[skin.extra]) top = Math.min(top, EXTRA_TOP[skin.extra]);
-  if (gear.hand === 'tridente') top = Math.min(top, -112);
+  if (HAND_TOP[gear.hand]) top = Math.min(top, HAND_TOP[gear.hand]);
   return top;
 }
 
@@ -414,6 +415,44 @@ export function drawDiver(ctx, x, y, scale, time = 0, depth = 0, skinId = 'clasi
     line(ctx, [[48, 52], [66, -92]], '#d9b24a', 4);
     line(ctx, [[54, -88], [78, -92]], '#d9b24a', 4);
     for (const [px, py] of [[55, -88], [66, -92], [78, -92]]) polygon(ctx, [[px - 3, py], [px, py - 18], [px + 3, py]], '#f3d77a');
+  }
+  if (gear.hand === 'helado') {
+    polygon(ctx, [[60, -6], [76, -6], [68, 14]], '#d9a05b');
+    for (const [x1, y1, x2, y2] of [[62, -3, 72, 8], [74, -3, 65, 8]]) line(ctx, [[x1, y1], [x2, y2]], '#b47c3e', 1.2);
+    ellipse(ctx, 68, -10, 9, 7, '#ff9ec4'); ellipse(ctx, 68, -20, 7.5, 6.5, '#fff1d5');
+    ellipse(ctx, 70, -28, 3, 3, '#e0414f'); line(ctx, [[70, -30], [73, -35]], '#4c8a3c', 1.2);
+  }
+  if (gear.hand === 'globo') {
+    const sway = Math.sin(time * 1.6) * 5;
+    ctx.strokeStyle = '#f3fff6aa'; ctx.lineWidth = 1.2; ctx.beginPath();
+    ctx.moveTo(64, -2); ctx.quadraticCurveTo(58 + sway, -54, 76 + sway, -96); ctx.stroke();
+    ellipse(ctx, 78 + sway, -114, 15, 18, '#ef6f6c'); ellipse(ctx, 72 + sway, -122, 4, 6, '#ffc7c2');
+    polygon(ctx, [[74 + sway, -95], [82 + sway, -95], [78 + sway, -99]], '#d9534f');
+  }
+  if (gear.hand === 'red-pesca') {
+    line(ctx, [[52, 16], [80, -50]], '#a86a3c', 4);
+    ctx.save(); ctx.translate(86, -62); ctx.rotate(-.4);
+    ctx.strokeStyle = '#f3e8c699'; ctx.lineWidth = 1;
+    for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(i * 6, -11); ctx.quadraticCurveTo(i * 4, 12, 0, 22); ctx.stroke(); }
+    for (const y of [0, 8, 15]) { ctx.beginPath(); ctx.moveTo(-14 + y * .6, y); ctx.lineTo(14 - y * .6, y); ctx.stroke(); }
+    ctx.strokeStyle = '#d9b24a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(0, -4, 16, 9, 0, 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
+  if (gear.hand === 'varita') {
+    line(ctx, [[62, 4], [82, -34]], '#3b2457', 3.5); line(ctx, [[79, -28], [82, -34]], '#f3fff6', 3.5);
+    const twinkle = 1 + Math.sin(time * 6) * .15;
+    star(ctx, 84, -40, 11 * twinkle, 4.5 * twinkle, '#ffd34f');
+    for (let i = 0; i < 3; i++) {
+      const a = time * 2 + i * 2.1;
+      star(ctx, 84 + Math.cos(a) * 18, -40 + Math.sin(a) * 14, 3.5, 1.4, '#fff5c2');
+    }
+  }
+  if (gear.hand === 'espada-pirata') {
+    rounded(ctx, 58, -6, 16, 5, 2, '#d9b24a');
+    ctx.fillStyle = '#dfe9ee'; ctx.beginPath(); ctx.moveTo(63, -6);
+    ctx.quadraticCurveTo(58, -38, 76, -66); ctx.quadraticCurveTo(76, -36, 70, -6); ctx.closePath(); ctx.fill();
+    line(ctx, [[65, -10], [68, -42]], '#ffffff99', 1.2);
+    ellipse(ctx, 66, 8, 3, 3, '#d9b24a');
   }
   ctx.restore();
   drawHead(ctx, skin, gear, c, pose, time);
@@ -737,6 +776,56 @@ export function drawTreasure(ctx, x, y, scale, opened = false) {
   ctx.restore();
 }
 
+// The expedition boat seen from below the surface, for the treasure frenzy.
+export function drawBoatShadow(ctx, x, y, scale, time = 0) {
+  ctx.save(); ctx.translate(x, y + Math.sin(time * 1.2) * 2); ctx.scale(scale, scale); ctx.rotate(Math.sin(time * .8) * .02);
+  ellipse(ctx, 0, -10, 170, 60, '#e8f8c210'); ellipse(ctx, 0, -10, 120, 42, '#e8f8c214');
+  ctx.strokeStyle = '#d9f6ed55'; ctx.lineWidth = 2; ctx.beginPath();
+  for (let i = -160; i <= 160; i += 8) ctx.lineTo(i, -22 + Math.sin(i * .08 + time * 2) * 2);
+  ctx.stroke();
+  ctx.fillStyle = '#0b2235d9'; ctx.beginPath(); ctx.moveTo(-122, -22);
+  ctx.quadraticCurveTo(-100, 14, 0, 18); ctx.quadraticCurveTo(100, 14, 132, -22); ctx.closePath(); ctx.fill();
+  line(ctx, [[-96, -6], [104, -6]], '#ffd47355', 3);
+  // A rope with a bucket: the crew tips treasure down to the diver.
+  const swing = Math.sin(time * 2) * 4;
+  line(ctx, [[48, 12], [48 + swing, 36]], '#e8d9b0', 1.5);
+  polygon(ctx, [[40 + swing, 36], [56 + swing, 36], [53 + swing, 47], [43 + swing, 47]], '#c9843f');
+  ellipse(ctx, 48 + swing, 36, 8, 2.5, '#ffd34f');
+  ctx.restore();
+}
+// Treasure dropped from the boat during the frenzy. options: { time, id, flinch, caught 0..1 }
+export function drawLoot(ctx, kind, x, y, scale, options = {}) {
+  const { time = 0, id = 0, flinch = 0, caught = 0 } = options;
+  ctx.save(); ctx.translate(x, y); ctx.scale(scale * (1 + caught * .6), scale * (1 + caught * .6));
+  ctx.globalAlpha *= 1 - caught;
+  // A few bubbles trail behind as it sinks.
+  for (let i = 0; i < 3; i++) {
+    const rise = mod(time * 40 + i * 13 + id * 7, 38);
+    ctx.strokeStyle = '#d0f6eb88'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(Math.sin(time * 3 + i + id) * 6, -24 - rise, 1.5 + i % 2, 0, TAU); ctx.stroke();
+  }
+  ctx.rotate(Math.sin(time * 2.4 + id) * .25 + (flinch > 0 ? Math.sin(flinch * 80) * .2 : 0));
+  // Soft glow so it reads against the dark wreck.
+  const glow = kind === 'gem' ? '#c9a6ff' : '#ffe27a';
+  ellipse(ctx, 0, 0, 32, 32, `${glow}1a`); ellipse(ctx, 0, 0, 23, 23, `${glow}2e`);
+  if (kind === 'gem') {
+    polygon(ctx, [[-16, -6], [-8, -16], [8, -16], [16, -6], [0, 18]], '#9b6cf0');
+    polygon(ctx, [[-16, -6], [16, -6], [0, 18]], '#7c4fd8');
+    polygon(ctx, [[-8, -16], [8, -16], [4, -6], [-4, -6]], '#d9c4ff');
+    polygon(ctx, [[-4, -6], [4, -6], [0, 18]], '#b48cff');
+  } else {
+    // A spinning doubloon: it narrows and widens as it turns.
+    const turn = .35 + Math.abs(Math.cos(time * 3 + id)) * .65;
+    ctx.save(); ctx.scale(turn, 1);
+    ellipse(ctx, 0, 0, 17, 17, '#c9962e'); ellipse(ctx, 0, 0, 14, 14, '#f1c453');
+    ctx.strokeStyle = '#c9962e'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, 10, 0, TAU); ctx.stroke();
+    star(ctx, 0, 0, 6.5, 2.8, '#fff1c2');
+    ctx.restore();
+  }
+  const twinkle = mod(time * 1.3 + id * .37, 1);
+  if (twinkle < .3) star(ctx, 10, -12, 6 * (1 - twinkle / .3), 1.5, '#ffffff', 4);
+  ctx.restore();
+}
 export function drawShipwreck(ctx, x, y, scale, time = 0, opened = false, treasureOffset = { x: 142, y: 14 }) {
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale); ctx.rotate(-.13);
   ellipse(ctx, -7, 37, 176, 25, '#082d4277');

@@ -333,6 +333,12 @@ dialog li,dialog p {
 .boss-name > span { color: #ffc39e; }
 #bossHealthFill { background: #ef9b82; }
 .boss-hud.charging .boss-attack-hint { color: #ffe1a5; }
+.frenzy-hud { border-color: #ffd34f88; background: #3a3217ee; }
+.frenzy-hud .boss-name > span { color: #ffe27a; font-weight: bold; }
+.frenzy-hud.hurry { border-color: #ff9a3c; }
+#frenzyFill { display: block; height: 100%; background: #ffd34f; transition: width .1s linear; }
+.frenzy-banner { border-color: #ffd34f88; background: #3a3217f0; }
+@media (prefers-reduced-motion: reduce) { #frenzyFill { transition: none; } }
 .wallet { display:flex; align-items:center; gap:12px; margin-right:6px; font-size:14px; }
 .wallet-item { display:flex; align-items:center; gap:6px; color:var(--ink); }
 .coin, .gem { display:inline-block; width:14px; height:14px; flex:none; vertical-align:-2px; }

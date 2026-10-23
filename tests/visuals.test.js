@@ -73,12 +73,12 @@ test('wreck, treasure and octopus draw safely in active and peaceful victory sta
     recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
   }
 });
-test('typing controls are nested inside the ocean with an accessible label, not below it', async () => {
+test('typing controls live in the game console with an accessible label', async () => {
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
-  const oceanStart = html.indexOf('id="ocean"');
+  const shell = html.indexOf('class="game-shell"');
   const input = html.indexOf('id="typing"');
-  const welcome = html.indexOf('id="welcome"');
-  assert.ok(oceanStart < input && input < welcome);
+  const shellEnd = html.indexOf('</section>', shell);
+  assert.ok(shell < input && input < shellEnd);
   assert.match(html, /aria-describedby="fingerHint feedback"/);
   assert.equal((html.match(/id="typing"/g) || []).length, 1);
   assert.equal((html.match(/id="wordDisplay"/g) || []).length, 1);
@@ -117,4 +117,76 @@ test('oxygen is attached to the ocean, outside the expedition HUD, with an acces
   assert.ok(html.indexOf('id="oxygenHud"') < html.indexOf('id="welcome"'));
   assert.match(html, /id="oxygenMeter"[^>]*role="progressbar"/);
   assert.equal((html.match(/id="air"/g) || []).length, 1);
+});
+
+import { drawCreature, drawPet, diverTop } from '../visuals.js';
+import { SKINS, ACCESSORIES, SLOTS } from '../skins.js';
+import { eventOn, currentEvent, eventWords } from '../events.js';
+test('every skin, accessory and pose draws with balanced canvas state', () => {
+  const poses = [{}, { cheer: .5, flip: true }, { hurt: 1 }, { type: 1, worried: true, look: -1 }, { cheer: .3 }];
+  for (const skin of SKINS) for (const pose of poses) {
+    const recording = recordingContext();
+    drawDiver(recording.ctx, 200, 160, 1, 2.3, 100, skin.id, {}, pose);
+    recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
+  }
+  for (const item of ACCESSORIES) for (const skin of ['clasico', 'sirena', 'tiburon']) {
+    const recording = recordingContext();
+    drawDiver(recording.ctx, 200, 160, 1, 1.7, 0, skin, { [item.slot]: item.id }, { cheer: .4 });
+    recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
+    assert.ok(recording.calls.length < 2500);
+  }
+  assert.ok(SLOTS.every(slot => ACCESSORIES.some(item => item.slot === slot.id)));
+});
+test('the oxygen meter clears tall hats: diverTop grows with what the diver wears', () => {
+  const bare = diverTop('clasico', {});
+  for (const hat of ACCESSORIES.filter(item => item.slot === 'head')) assert.ok(diverTop('clasico', { head: hat.id }) < bare - 15, hat.id);
+  assert.ok(diverTop('dorado', {}) < bare); assert.ok(diverTop('clasico', { hand: 'tridente' }) < bare);
+  assert.equal(diverTop('clasico', { mask: 'mascara-sol' }), bare);
+});
+test('creatures and pets draw in every state, including the Halloween costume', () => {
+  for (const kind of ['shark', 'golden', 'hammer', 'puffer', 'whale', 'unknown']) for (const options of [{}, { flip: true, progress: .8 }, { fleeing: true, time: 3 }, { flinch: .2, costume: 'halloween', id: 2 }, { costume: 'halloween', id: 3 }]) {
+    const recording = recordingContext();
+    drawCreature(recording.ctx, kind, 300, 200, .75, options);
+    recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
+  }
+  for (const pet of ACCESSORIES.filter(item => item.slot === 'pet')) {
+    const recording = recordingContext(); drawPet(recording.ctx, pet.id, 50, 50, 2);
+    recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
+  }
+  const recording = recordingContext();
+  drawOceanBackdrop(recording.ctx, 1100, 480, 120, 4, 'halloween');
+  drawOctopus(recording.ctx, 800, 200, 1, 2, { hp: 6, maxHp: 8, theme: 'halloween' });
+  recording.assertBalanced(); assert.ok(recording.calls.length < 4000);
+});
+test('seasons follow the calendar and can be previewed or turned off', () => {
+  assert.equal(eventOn(new Date(2026, 9, 31)).id, 'halloween');
+  assert.equal(eventOn(new Date(2026, 9, 15)).id, 'halloween'); assert.equal(eventOn(new Date(2026, 10, 5)).id, 'halloween');
+  assert.equal(eventOn(new Date(2026, 10, 6)), null); assert.equal(eventOn(new Date(2026, 6, 1)), null);
+  assert.equal(currentEvent('?evento=halloween', new Date(2026, 6, 1)).id, 'halloween');
+  assert.equal(currentEvent('?evento=no', new Date(2026, 9, 31)), null);
+  const halloween = eventOn(new Date(2026, 9, 31));
+  assert.deepEqual(eventWords(halloween, 0), []); assert.ok(eventWords(halloween, 2).includes('fantasma'));
+});
+
+import { fingerId, plainKey, createHands, stepHands, drawHands, HOME } from '../hands.js';
+test('ghost hands: each letter maps to its finger and only that finger reaches out', () => {
+  assert.equal(fingerId('f'), 'L2'); assert.equal(fingerId('c'), 'L3'); assert.equal(fingerId('p'), 'R5');
+  assert.equal(fingerId('ñ'), 'R5'); assert.equal(fingerId('í'), 'R3'); assert.equal(fingerId(' '), 'thumbs'); assert.equal(fingerId(null), null);
+  assert.equal(plainKey('é'), 'e'); assert.equal(plainKey('ñ'), 'ñ');
+  const keys = {};
+  ['qwertyuiop', 'asdfghjklñ', 'zxcvbnm'].forEach((row, r) => [...row].forEach((char, i) => { keys[char] = { x: 30 + i * 50 + r * 15, y: 30 + r * 46, w: 44, h: 36 }; }));
+  keys[' '] = { x: 260, y: 170, w: 250, h: 28 };
+  const layout = { keys }, hands = createHands();
+  stepHands(hands, layout, null, 0, true);
+  for (const [id, home] of Object.entries(HOME)) assert.deepEqual(hands.tips[id], { x: keys[home].x, y: keys[home].y });
+  stepHands(hands, layout, 'c', 1, true);
+  assert.deepEqual(hands.tips.L3, { x: keys.c.x, y: keys.c.y }); assert.deepEqual(hands.tips.L2, { x: keys.f.x, y: keys.f.y });
+  assert.equal(hands.active, 'L3'); assert.ok(hands.color);
+  for (const char of ['c', ' ', null]) {
+    stepHands(hands, layout, char, .016);
+    const recording = recordingContext();
+    drawHands(recording.ctx, hands, layout, 600, 260, 1);
+    recording.assertBalanced(); assert.equal(recording.properties().globalAlpha, 1);
+  }
+  const empty = recordingContext(); drawHands(empty.ctx, createHands(), { keys: {} }, 600, 260); empty.assertBalanced();
 });

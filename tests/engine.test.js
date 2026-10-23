@@ -98,7 +98,7 @@ test('boss intro refills oxygen, pauses safely, and keeps words within the chose
     state.mode = 'bossIntro'; tickRun(state, 2); assert.equal(state.mode, 'boss');
   }
 });
-test('boss attacks consume oxygen without erasing partial input, correct phrases do not postpone attacks', () => {
+test('boss attacks consume oxygen without erasing partial input; a correct phrase resets the clock', () => {
   const state = ready(); state.score = 23; complete(state); tickRun(state, 2);
   const word = currentWord(state); typeInRun(state, word[0]);
   state.boss.attackIn = .05; const oxygen = state.oxygen;
@@ -106,11 +106,21 @@ test('boss attacks consume oxygen without erasing partial input, correct phrases
   assert.equal(state.oxygen, oxygen - 18); assert.equal(state.input, word[0]);
   typeInRun(state, `${word[0]}@`); assert.equal(state.oxygen, oxygen - 23);
   typeInRun(state, word[0]); assert.equal(state.oxygen, oxygen - 23);
-  const deadline = state.boss.attackIn;
+  state.boss.attackIn = 2;
   typeInRun(state, word); assert.equal(state.boss.hp, 7); assert.equal(state.depth, 240);
-  assert.equal(state.boss.attackIn, deadline); assert.equal(state.oxygen, oxygen - 20);
+  assert.equal(state.boss.attackIn, state.boss.attackInterval); assert.equal(state.oxygen, oxygen - 20);
   state.mode = 'paused'; const snapshot = JSON.stringify(state); tickRun(state, 20);
   assert.equal(JSON.stringify(state), snapshot);
+});
+test('correct letters buy Otto time once; deleting and retyping earns nothing', () => {
+  const state = ready(); state.score = 23; complete(state); tickRun(state, 2);
+  const phrase = currentWord(state); state.boss.attackIn = 2;
+  typeInRun(state, phrase.slice(0, 3)); assert.ok(Math.abs(state.boss.attackIn - 2.9) < 1e-9);
+  typeInRun(state, phrase.slice(0, 1)); typeInRun(state, phrase.slice(0, 3));
+  assert.ok(Math.abs(state.boss.attackIn - 2.9) < 1e-9);
+  typeInRun(state, `${phrase.slice(0, 3)}@`); assert.ok(Math.abs(state.boss.attackIn - 2.9) < 1e-9);
+  state.boss.attackIn = state.boss.attackInterval - .1; typeInRun(state, phrase.slice(0, 5));
+  assert.equal(state.boss.attackIn, state.boss.attackInterval);
 });
 test('boss defeat and oxygen exhaustion are exclusive; practice mode never attacks', () => {
   const state = ready(); state.score = 23; complete(state); tickRun(state, 2);
@@ -122,7 +132,7 @@ test('boss defeat and oxygen exhaustion are exclusive; practice mode never attac
   assert.equal(practice.mode, 'boss');
 });
 
-test('Otto speeds up halfway without extending a nearly due attack', () => {
+test('Otto speeds up halfway and his clock restarts with the faster pace', () => {
   for (const level of [0, 1, 2]) {
     const state = ready(level); state.score = 23; complete(state); tickRun(state, 2);
     const interval = state.boss.attackInterval;
@@ -131,19 +141,37 @@ test('Otto speeds up halfway without extending a nearly due attack', () => {
     state.boss.attackIn = .4; complete(state);
     assert.equal(state.boss.hp, 4);
     assert.equal(state.boss.attackInterval, interval * .7);
-    assert.equal(state.boss.attackIn, .4);
-    assert.deepEqual(tickRun(state, .5), ['bossAttack']);
-    assert.ok(state.boss.attackIn < interval * .7);
+    assert.equal(state.boss.attackIn, interval * .7);
+    assert.deepEqual(tickRun(state, interval * .7 + .1), ['bossAttack']);
   }
 });
-test('continuous attacks make an idle boss encounter lose and cannot be reset by typing', () => {
+test('an idle boss encounter still loses: Otto keeps attacking while nobody types', () => {
   const state = ready(); state.score = 23; complete(state); tickRun(state, 2);
-  tickRun(state, 3); const remaining = state.boss.attackIn;
-  complete(state); assert.equal(state.boss.attackIn, remaining);
   tickRun(state, 100);
   assert.equal(state.mode, 'ended'); assert.equal(state.oxygen, 0); assert.equal(state.won, false);
 });
-
+test('rare visitors: the whale gives oxygen and never hurts, golden sharks pay a gem', () => {
+  const state = ready(1); state.score = 8; state.oxygen = 50; state.sharks = [];
+  const rolls = [0, .1, 0]; state.random = () => rolls.shift() ?? .5;
+  const whale = spawnShark(state); assert.equal(whale.kind, 'whale');
+  state.targetId = whale.id; for (let i = 1; i <= whale.word.length; i++) typeInRun(state, whale.word.slice(0, i));
+  assert.equal(state.oxygen, 62); assert.equal(state.whales, 1);
+  const passing = ready(1); passing.score = 8; passing.sharks = []; passing.random = () => 0;
+  const friend = spawnShark(passing); friend.progress = .999; const air = passing.oxygen;
+  tickRun(passing, 1); assert.equal(passing.oxygen, air); assert.equal(passing.collisions, 0);
+  const lucky = ready(1); lucky.score = 3; lucky.whaleSeen = true; lucky.sharks = []; lucky.random = () => .05;
+  const gold = spawnShark(lucky); assert.equal(gold.kind, 'golden');
+  lucky.targetId = gold.id; for (let i = 1; i <= gold.word.length; i++) typeInRun(lucky, gold.word.slice(0, i));
+  assert.equal(computeRewards({ ...lucky, won: false }).gems, 1);
+});
+test('seasonal words join the deck from level 2 and candy is earned per word', () => {
+  const words = ['bruja', 'gato'];
+  assert.ok(createRun(1, false, Math.random, { eventWords: words, event: 'halloween' }).words.includes('bruja'));
+  assert.ok(!createRun(0, false, Math.random, { eventWords: words }).words.includes('bruja'));
+  const state = { ...createRun(1, false, () => .3, { event: 'halloween' }), score: 10, won: true };
+  assert.equal(computeRewards(state).candy, 25);
+  assert.equal(computeRewards({ ...createRun(1), score: 10 }).candy, 0);
+});
 test('a steady typing pace can win Otto, but a slow pace runs out of oxygen', () => {
   for (const secondsPerPhrase of [4, 14]) {
     const state = ready(); state.score = 23; complete(state); tickRun(state, 2);
@@ -180,7 +208,7 @@ test('shop: buying, equipping and sanitising the wallet', () => {
   assert.equal(buySkin(wallet, 'dorado'), false); assert.equal(buySkin(wallet, 'coral'), true);
   assert.equal(wallet.coins, 0); assert.equal(buySkin(wallet, 'coral'), false);
   assert.equal(equipSkin(wallet, 'coral'), true); assert.equal(equipSkin(wallet, 'pirata'), false);
-  assert.deepEqual(sanitizeWallet({ coins: -5, gems: 'x', owned: ['coral', 'nope'], equipped: 'pirata' }), { coins: 0, gems: 0, owned: ['clasico', 'coral'], equipped: 'clasico', gear: { mask: null, fins: null, head: null, hand: null } });
+  assert.deepEqual(sanitizeWallet({ coins: -5, gems: 'x', owned: ['coral', 'nope'], equipped: 'pirata' }), { coins: 0, gems: 0, candy: 0, owned: ['clasico', 'coral'], equipped: 'clasico', gear: { mask: null, fins: null, head: null, hand: null, back: null, pet: null, trail: null } });
   assert.deepEqual(sanitizeWallet(null), emptyWallet()); assert.equal(new Set(SKINS.map(skin => skin.id)).size, SKINS.length);
 });
 
@@ -193,8 +221,16 @@ test('shop: accessories are bought per slot, equipped and removed', () => {
   assert.equal(equipSkin(wallet, 'sombrero-copa'), false);
   assert.equal(equipGear(wallet, 'head', null), true); assert.equal(wallet.gear.head, null);
   const clean = sanitizeWallet({ owned: ['guitarra'], gear: { hand: 'guitarra', head: 'guitarra', mask: 'mascara-sol' }, equipped: 'guitarra' });
-  assert.deepEqual(clean.gear, { mask: null, fins: null, head: null, hand: 'guitarra' }); assert.equal(clean.equipped, 'clasico');
+  assert.deepEqual(clean.gear, { mask: null, fins: null, head: null, hand: 'guitarra', back: null, pet: null, trail: null }); assert.equal(clean.equipped, 'clasico');
   assert.equal(new Set(ACCESSORIES.map(item => item.id)).size, ACCESSORIES.length);
+});
+test('shop: seasonal items cost candy and are only sold during their season', () => {
+  const wallet = emptyWallet(); wallet.candy = 100; wallet.coins = 1000;
+  assert.equal(buySkin(wallet, 'esqueleto'), false); assert.equal(wallet.candy, 100);
+  assert.equal(buySkin(wallet, 'esqueleto', 'halloween'), true); assert.equal(wallet.candy, 40); assert.equal(wallet.coins, 1000);
+  assert.equal(buySkin(wallet, 'fantasmita', 'halloween'), true); assert.equal(buySkin(wallet, 'estela-murcielagos', 'halloween'), false);
+  assert.equal(equipSkin(wallet, 'esqueleto'), true);
+  assert.equal(sanitizeWallet({ candy: 12.7, owned: ['esqueleto'], equipped: 'esqueleto' }).equipped, 'esqueleto');
 });
 
 import { starsFor } from '../engine.js';

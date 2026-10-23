@@ -18,8 +18,8 @@ export function fingerFor(char) {
   if (char === ' ') return { color: 'blue', name: 'pulgar', home: 'Espacio' };
   return { color: 'pink', name: 'meñique derecho', home: 'Ñ' };
 }
-export function makeDeck(level, random = Math.random) {
-  const words = [...LEVELS[level].words];
+export function makeDeck(level, random = Math.random, extra = []) {
+  const words = [...LEVELS[level].words, ...extra];
   for (let i = words.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1)); [words[i], words[j]] = [words[j], words[i]]; }
   // Start the first adventure at the index-finger anchors, not at a random word.
   if (level === 0) return ['fff', 'jjj', ...words.filter(word => !['fff', 'jjj'].includes(word))].slice(0, 12);
@@ -39,13 +39,20 @@ export function accuracy(attempts, mistakes) { return attempts ? Math.round(100 
 export const MISSION_WORDS = 24;
 export const BOSS_HITS = 8;
 export const BOSS_ATTACK_DAMAGE = 18;
-export const OXYGEN = { mistake: 5, collision: 22, reward: 3 };
+export const OXYGEN = { mistake: 5, collision: 22, reward: 3, whale: 12 };
+// Each correct new letter against Otto buys a little time; a finished phrase resets his clock.
+export const BOSS_LETTER_BONUS = .3;
+// Creature drawn for a word: short words are puffers, long ones hammerheads.
+export function creatureFor(word) { return word.length <= 3 ? 'puffer' : word.length >= 7 ? 'hammer' : 'shark'; }
 export function createRun(level, relaxed = false, random = Math.random, options = {}) {
+  // Seasonal words join the deck from the second level on; the first one trains home-row fingers only.
+  const extra = level > 0 && Array.isArray(options.eventWords) ? options.eventWords.filter(word => typeof word === 'string' && word) : [];
   return {
+    words: [...LEVELS[level].words, ...extra], event: options.event || null, golden: 0, whaleSeen: false, whales: 0,
     mode: 'diving', level, relaxed, random, diveTime: 0, elapsed: 0,
     score: 0, points: 0, oxygen: 100, depth: 0, visualDepth: 0,
     attempts: 0, mistakes: 0, collisions: 0, streak: 0, bestStreak: 0, wave: 1, sharks: [],
-    deck: makeDeck(level, random), cursor: 0, nextId: 1,
+    deck: makeDeck(level, random, extra), cursor: 0, nextId: 1,
     spawnIn: 0, targetId: null, input: '', effects: [], won: false, boss: null,
     // Two-player team: oxygen, words and Otto's tentacles are shared between devices.
     coop: Boolean(options.coop), side: options.coop ? 'left' : null, partnerScore: 0, partnerCollisions: 0, pendingHits: 0
@@ -55,7 +62,7 @@ export function createRun(level, relaxed = false, random = Math.random, options 
 // apply to a finished level in challenge mode (practice sharks never move).
 export function computeRewards(state) {
   const items = [];
-  const add = (label, coins, gems = 0) => items.push({ label, coins, gems });
+  const add = (label, coins, gems = 0, candy = 0) => items.push({ label, coins, gems, candy });
   if (state.relaxed) {
     add('Práctica sin apuro', state.score * 2);
   } else if (!state.won) {
@@ -68,7 +75,11 @@ export function computeRewards(state) {
     if (state.coop) add('¡Ganaron juntos!', 50, 1);
     if (accuracy(state.attempts, state.mistakes) >= 95) add('Letras casi perfectas', 50, 0);
   }
-  return { items, coins: items.reduce((sum, item) => sum + item.coins, 0), gems: items.reduce((sum, item) => sum + item.gems, 0) };
+  // Golden sharks and seasonal candy are kept even when the dive ends early.
+  if (state.golden) add(state.golden === 1 ? 'Tiburón dorado' : 'Tiburones dorados', 0, state.golden);
+  if (state.event && state.score) add('Caramelos de Halloween', 0, 0, state.score + (state.won ? 15 : 0));
+  const sum = key => items.reduce((total, item) => total + item[key], 0);
+  return { items, coins: sum('coins'), gems: sum('gems'), candy: sum('candy') };
 }
 // 0 stars unless a level was finished in challenge mode; fewer sharks, more stars.
 export function starsFor(state) {
@@ -95,7 +106,7 @@ export function spawnShark(state) {
   const active = activeSharks(state);
   if (active.length >= capacity(state)) return null;
   // No duplicate words on screen; favor different first letters for targeting.
-  const pool = LEVELS[state.level].words.filter(word => !active.some(shark => shark.word === word));
+  const pool = state.words.filter(word => !active.some(shark => shark.word === word));
   let word;
   for (let i = 0; i < state.deck.length; i++) {
     const candidate = state.deck[state.cursor++ % state.deck.length];
@@ -106,9 +117,12 @@ export function spawnShark(state) {
   const lanes = [0, 1, 2, 3].filter(lane => !active.some(shark => shark.lane === lane));
   const lane = lanes[Math.floor(state.random() * lanes.length)] ?? 0;
   const shark = {
-    id: state.nextId++, word, side, lane, progress: 0, departure: null,
+    id: state.nextId++, word, side, lane, progress: 0, departure: null, flinch: 0, kind: creatureFor(word),
     duration: LEVELS[state.level].seconds / (1 + (state.wave - 1) * .18)
   };
+  // Rare visitors: one friendly whale per dive (it gives oxygen, never hurts) and a few golden sharks.
+  if (!state.whaleSeen && state.score >= 8 && state.random() < .3) { state.whaleSeen = true; shark.kind = 'whale'; shark.duration *= 1.4; }
+  else if (state.score >= 2 && state.golden + activeSharks(state).filter(other => other.kind === 'golden').length < 2 && state.random() < .07) { shark.kind = 'golden'; shark.duration *= .85; }
   state.sharks.push(shark); ensureTarget(state); return shark;
 }
 export function currentWord(state) {
@@ -124,7 +138,7 @@ function enterBoss(state) {
   const interval = [9, 8, 10][state.level];
   state.boss = {
     hp: BOSS_HITS, maxHp: BOSS_HITS, words, wordIndex: 0, introTime: 0,
-    attackIn: interval, attackInterval: interval, hitTime: 0, attackTime: 0, defeated: false
+    attackIn: interval, attackInterval: interval, hitTime: 0, attackTime: 0, defeated: false, reach: 0
   };
   while (state.pendingHits > 0) { state.pendingHits--; partnerBossHit(state); }
 }
@@ -136,11 +150,13 @@ export function partnerBossHit(state) {
   if (!state.boss) { state.pendingHits++; return; }
   if (state.boss.hp <= 0 || !['bossIntro', 'boss'].includes(state.mode)) return;
   state.boss.hp--; state.boss.hitTime = .5;
-  if (state.boss.hp === BOSS_HITS / 2) {
-    state.boss.attackInterval *= .7;
-    state.boss.attackIn = Math.min(state.boss.attackIn, state.boss.attackInterval);
-  }
+  calmBoss(state.boss);
   if (state.boss.hp === 0) { state.boss.defeated = true; state.won = true; state.mode = 'ended'; state.points += 300; }
+}
+// A calmed tentacle resets Otto's clock. Halfway through he gets faster.
+function calmBoss(boss) {
+  if (boss.hp === BOSS_HITS / 2) boss.attackInterval *= .7;
+  boss.attackIn = boss.attackInterval;
 }
 function endIfNeeded(state) {
   if (state.oxygen <= 0) {
@@ -158,16 +174,25 @@ function recordInput(state, raw, word) {
   }
   return result;
 }
+// Length of the correctly typed start of the phrase.
+function correctPrefix(value, target) {
+  let i = 0;
+  while (i < value.length && value[i] === target[i]) i++;
+  return i;
+}
 function typeBoss(state, raw) {
-  const result = recordInput(state, raw, currentWord(state));
+  const phrase = currentWord(state);
+  const result = recordInput(state, raw, phrase);
+  // Only letters beyond the furthest point reached count, so deleting and retyping earns nothing.
+  const reached = correctPrefix(state.input, phrase);
+  if (reached > state.boss.reach && !state.relaxed) {
+    state.boss.attackIn = Math.min(state.boss.attackInterval, state.boss.attackIn + (reached - state.boss.reach) * BOSS_LETTER_BONUS);
+    state.boss.reach = reached;
+  }
   if (result.complete && state.oxygen > 0) {
     state.score++; state.streak++; state.bestStreak = Math.max(state.bestStreak, state.streak);
-    state.boss.hp--; state.boss.wordIndex++; state.boss.hitTime = .5;
-    // Hits never postpone an attack. Halfway through, Otto picks up the pace.
-    if (state.boss.hp === BOSS_HITS / 2) {
-      state.boss.attackInterval *= .7;
-      state.boss.attackIn = Math.min(state.boss.attackIn, state.boss.attackInterval);
-    }
+    state.boss.hp--; state.boss.wordIndex++; state.boss.hitTime = .5; state.boss.reach = 0;
+    calmBoss(state.boss);
     let gained = result.value.length * 10 + 50;
     if (!state.relaxed) state.oxygen = Math.min(100, state.oxygen + OXYGEN.reward);
     state.input = '';
@@ -190,14 +215,19 @@ export function typeInRun(state, raw) {
   const target = targetShark(state);
   if (!target) return { ignored: true };
   const result = recordInput(state, raw, target.word);
+  if (result.added && !result.mistakes) target.flinch = .25;
   if (result.complete && state.oxygen > 0) {
     state.score++; state.streak++; state.bestStreak = Math.max(state.bestStreak, state.streak);
     const gained = target.word.length * 10 + Math.min(state.streak, 5) * 5;
     state.points += gained; state.depth = state.score * 10;
     state.wave = Math.min(4, 1 + Math.floor(state.score / 6));
-    if (!state.relaxed) state.oxygen = Math.min(100, state.oxygen + OXYGEN.reward);
+    const air = target.kind === 'whale' ? OXYGEN.whale : OXYGEN.reward;
+    if (!state.relaxed) state.oxygen = Math.min(100, state.oxygen + air);
+    if (target.kind === 'golden') state.golden++;
+    if (target.kind === 'whale') state.whales++;
     target.departure = 'saved'; target.exitTime = 0;
-    state.effects.push({ text: `+${gained}`, time: 0, kind: 'win' });
+    state.effects.push({ text: target.kind === 'whale' && !state.relaxed ? `+${OXYGEN.whale}% O₂` : target.kind === 'golden' ? '+1 gema' : `+${gained}`, time: 0, kind: 'win' });
+    result.kind = target.kind;
     state.targetId = null; state.input = ''; ensureTarget(state);
     state.spawnIn = Math.min(state.spawnIn, .5);
     result.gained = gained;
@@ -238,8 +268,13 @@ export function tickRun(state, dt) {
     endIfNeeded(state); return events;
   }
   for (const shark of state.sharks) {
+    shark.flinch = Math.max(0, (shark.flinch || 0) - dt);
     if (shark.departure) { shark.exitTime += dt; continue; }
     if (!state.relaxed) shark.progress = Math.min(1, shark.progress + dt / shark.duration);
+    if (shark.progress >= 1 && shark.kind === 'whale') {
+      // The whale just waves and swims on.
+      shark.departure = 'passed'; shark.exitTime = 0; continue;
+    }
     if (shark.progress >= 1) {
       shark.departure = 'collision'; shark.exitTime = 0;
       state.oxygen = Math.max(0, state.oxygen - OXYGEN.collision); state.streak = 0; state.collisions++;

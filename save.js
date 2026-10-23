@@ -46,7 +46,8 @@ export function readBackup(text) {
 }
 export function describeBackup(data) {
   const stars = Object.values(data.stars).reduce((sum, value) => sum + value, 0);
-  return `${data.wallet.coins} monedas, ${data.wallet.gems} gemas, ${data.wallet.owned.length} ${data.wallet.owned.length === 1 ? 'objeto' : 'objetos'} y ${stars} ${stars === 1 ? 'estrella' : 'estrellas'}`;
+  const candy = data.wallet.candy ? `${data.wallet.candy} caramelos, ` : '';
+  return `${data.wallet.coins} monedas, ${data.wallet.gems} gemas, ${candy}${data.wallet.owned.length} ${data.wallet.owned.length === 1 ? 'objeto' : 'objetos'} y ${stars} ${stars === 1 ? 'estrella' : 'estrellas'}`;
 }
 export const DAY = 86400000;
 // A backup is worth suggesting once there is something to lose and it is not recent.

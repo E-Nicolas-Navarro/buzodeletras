@@ -31,6 +31,8 @@ Otra opción: subir los archivos a un repositorio e importarlo desde Vercel, con
 - Colocá la mano izquierda en **A S D F**, la derecha en **J K L Ñ**, y los pulgares sobre la barra espaciadora.
 - La tecla resaltada y la pista indican qué dedo usar. Volvé a la fila central después de cada letra.
 - Corregí con Retroceso. No hace falta Enter. Mirá la palabra en lugar de las manos.
+- **Manos guía:** debajo del mar está el teclado con dos manos fantasma semitransparentes. Cada dedo descansa en su tecla de la fila central, y el que hay que usar para la próxima letra se ilumina con su color y se estira hasta la tecla. Se apagan con **Manos guía: no** (queda guardado en el navegador) cuando ya no hacen falta.
+- La palabra se escribe en el panel de abajo, letra por letra: verde si está bien, roja si está mal y amarilla la que sigue.
 - Los tiburones entran alternadamente por izquierda y derecha. Elegí cualquiera escribiendo la primera letra de su palabra; después seguí esa palabra. También podés seleccionarlo con los botones debajo del mar. Si comparten primera letra, se elige el más cercano al buzo.
 - Arrancás con un tiburón. Al completar 4, 8 y 12 palabras, la capacidad sube a 2, 3 y 4 simultáneos. Cada 6 palabras comienza una nueva oleada y se acercan más rápido. No hay mordidas ni violencia.
 - Cada letra incorrecta consume **5% de oxígeno**. Retroceso no penaliza. Un tiburón que alcanza al buzo consume **22%** y se retira.
@@ -42,12 +44,26 @@ El juego orienta la técnica, pero no puede detectar qué dedos usa realmente. U
 
 ## Tienda y recompensas
 
-Al terminar un nivel se ganan **monedas de oro** y **gemas** (se guardan en este navegador). Con ellas se compran trajes de buzo en la **Tienda** (botón del encabezado o de la pantalla de resultados).
+Al terminar un nivel se ganan **monedas de oro** y **gemas** (se guardan en este navegador). Con ellas se compran trajes y accesorios en la **Tienda** (botón del encabezado o de la pantalla de resultados).
+
+- **Trajes:** además de los de colores, hay abeja (rayas y antenas), dinosaurio (púas), tiburón (capucha con dientes y aleta), súper buzo (capa que flota) y sirena (cola en vez de patas).
+- **Accesorios por lugar:** máscaras, patas de rana, sombreros, en mano, **espalda** (alas de mariposa, caparazón, mochila cohete), **mascotas** que te acompañan (pez payaso, tortuguita, medusa, mini Otto) y **estelas** (corazones, estrellas, arcoíris).
+- **Visitas sorpresa:** una **ballena amiga** por partida (desde la palabra 8) da 12 % de oxígeno y nunca choca; los **tiburones dorados** (hasta dos por partida) dan 1 gema aunque no termines el nivel.
+- Las palabras cortas llegan como **peces globo**, las largas (7 letras o más) como **tiburones martillo**.
 
 - Nivel completado: monedas según puntos y nivel, más 1 a 3 gemas.
 - **Bonus de tiburones:** si ningún tiburón te toca, +120 monedas y +3 gemas; si te alcanzan 1 o 2, +50 monedas y +1 gema.
 - **Letras casi perfectas** (95 % de precisión o más): +50 monedas.
 - Si te quedás sin oxígeno ganás 3 monedas por palabra; en modo sin apuro, 2 por palabra. Sin gemas ni bonus.
+
+## Eventos de temporada
+
+Se activan solos según la fecha del dispositivo, sin servidor (`events.js`). **Halloween bajo el mar** va del 15 de octubre al 5 de noviembre:
+
+- Calabazas que brillan en el arrecife, medusas fantasma, tiburones con sombrero de bruja o calabaza, y Otto con sombrero de bruja.
+- Desde el nivel 2 se suman palabras del tema (bruja, fantasma, calabaza…). El nivel 1 sigue solo con la fila central.
+- Cada palabra da **caramelos** (+15 si ganás). Con caramelos se compran el buzo esqueleto, el buzo calabaza, el sombrero de bruja, el fantasmita y la estela de murciélagos, solo durante el evento. Lo que compraste queda para siempre.
+- Para probarlo fuera de fecha: `?evento=halloween`. Para apagarlo: `?evento=no`.
 
 ## Guardar el progreso
 
@@ -62,7 +78,11 @@ El código lleva una suma de control que detecta errores de copiado, pero no imp
 
 ## Jugar de a dos (cooperativo)
 
-Dos personas pueden jugar cada una en su dispositivo. En la pantalla de inicio, una elige **Jugar con un amigo → Crear una sala** y comparte el código de 4 letras; la otra elige **Entrar** y lo escribe. La sala admite solo dos personas y quien la crea es el anfitrión: elige el nivel y empieza la partida.
+Dos personas pueden jugar cada una en su dispositivo. En la pantalla de inicio, una elige **Jugar con un amigo → Crear una sala** y comparte el código de 4 letras o el **link de invitación** (`…/?sala=ABCD`, se abre con el código ya cargado); la otra elige **Entrar**. La sala admite solo dos personas.
+
+- **Cada uno elige su propio nivel**: por ejemplo, un adulto en el nivel 3 y un chico en el nivel 1, en la misma partida. El anfitrión elige el modo sin apuro y empieza.
+- **Si se corta la conexión**, la partida se congela con un aviso y el invitado vuelve a llamar solo durante 30 segundos. Si vuelve, siguen donde estaban; si no, se vuelve al inicio. Un latido cada 2 s detecta cortes silenciosos. Salir de la sala avisa al otro al instante.
+- El **oxígeno lo decide el anfitrión**: el invitado numera sus cambios y el anfitrión confirma cuáles aplicó, así una sincronización atrasada no deshace nada.
 
 - Comparten el **oxígeno**, el contador de **24 palabras** y los **8 tentáculos** de Otto. Cada uno ve a su compañero con su traje y accesorios, y puede mandar 👍 🎉 ❤️.
 - Los tiburones de cada uno aparecen en su propia pantalla. Los ataques de Otto restan 9 % a cada uno (18 % en el modo solo) y no hay reserva de oxígeno en el naufragio.
@@ -97,7 +117,11 @@ Para ver los quince casos por separado con Node reciente: `node --test --test-is
 | `style.css` | Diseño adaptable, colores de dedos y movimiento reducido |
 | `engine.js` | Reglas deterministas: tiburones, oleadas, objetivos, oxígeno, puntos y profundidad |
 | `game.js` | Control de partida, composición de escena, sonidos y récords locales |
-| `visuals.js` | Ilustraciones y capas 2.5D del barco, buzo, arrecifes y peces |
+| `hands.js` | Manos fantasma sobre el teclado de referencia |
+| `visuals.js` | Ilustraciones y capas 2.5D del barco, buzo (poses, trajes, mascotas, estelas), criaturas, arrecifes y peces |
+| `skins.js` | Catálogo de trajes y accesorios, billetera y compras |
+| `events.js` | Calendario de eventos de temporada |
+| `net.js` | Salas de a dos por WebRTC, reconexión y validación de mensajes |
 | `tests/` | Pruebas de reglas y controlador con DOM/Canvas simulados |
 | `build.mjs` | Copia los cinco archivos públicos a `dist/` |
 | `server.mjs` | Servidor local sin dependencias |
@@ -122,8 +146,8 @@ Al calmar a Otto, el cofre abre su tapa durante una celebración de tres segundo
 ### Oxígeno sobre el buzo y un Otto con más reto
 
 - El oxígeno aparece sobre la cabeza del buzo, sigue su posición y conserva una lectura accesible del porcentaje. En práctica indica oxígeno ilimitado.
-- Otto pide ocho frases de dos palabras del nivel elegido, incluyendo el espacio. Cada frase calma un tentáculo y recupera 3% de oxígeno.
-- El reloj no se reinicia al acertar. Ataca cada 9, 8 o 10 segundos según el nivel; con cuatro tentáculos restantes el intervalo baja al 70%. Cada golpe consume 18% y conserva lo que ya escribiste. El brazo ámbar anuncia el ataque durante el último segundo y medio.
+- Otto pide ocho frases de dos palabras del nivel elegido, incluyendo el espacio. Cada frase calma un tentáculo, recupera 3% de oxígeno y **reinicia su reloj**.
+- Cada letra correcta nueva lo demora 0,3 s (sin pasar el intervalo completo; borrar y reescribir no suma). Ataca cada 9, 8 o 10 segundos según el nivel; con cuatro tentáculos restantes el intervalo baja al 70%. Si nadie escribe, sigue atacando. Cada golpe consume 18% y conserva lo que ya escribiste. El brazo ámbar anuncia el ataque durante el último segundo y medio.
 - La nueva silueta coral tiene ocho brazos con ventosas y un brazo que se extiende hacia el buzo al atacar. Con movimiento reducido conserva el aviso estático, sin el movimiento de ataque. La práctica sigue sin ataques ni penalizaciones.
 
 Verificación: `npm test` y `npm run build`. Revisión Chromium local a 1280 y 390 px: partida hasta Otto, acierto, daño de ataque, pausa/reanudación, oxígeno visible y ausencia de desborde horizontal. Capturas temporales en `/tmp/otto-1280.png` y `/tmp/otto-390.png`.

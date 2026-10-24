@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { drawBoat, drawBoatShadow, drawDiver, drawOceanBackdrop, drawOceanForeground, REEF_LAYERS, layerOffset, drawShipwreck, drawOctopus, drawTreasure, drawLoot, drawBoss } from '../visuals.js';
+import { drawBoat, drawBoatShadow, drawDiver, drawOceanBackdrop, drawOceanForeground, REEF_LAYERS, layerOffset, drawShipwreck, drawOctopus, drawTreasure, drawLoot, drawBoss, drawLetterFish } from '../visuals.js';
 
 function recordingContext() {
   const initial = { globalAlpha: 1, fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter' };
@@ -57,12 +57,17 @@ test('near scenery has stronger parallax and frozen time reproduces the same fra
   drawOceanBackdrop(second.ctx, 1100, 480, 80, 0);
   assert.deepEqual(first.calls, second.calls);
 });
-test('local server and static build both include the illustration module', async () => {
-  const build = await readFile(new URL('../build.mjs', import.meta.url), 'utf8');
-  const server = await readFile(new URL('../server.mjs', import.meta.url), 'utf8');
-  const game = await readFile(new URL('../game.js', import.meta.url), 'utf8');
-  assert.match(build, /'visuals\.js'/); assert.match(server, /'visuals\.js'/);
-  assert.match(game, /from '\.\/visuals\.js'/);
+test('local server and static build include every module the game imports', async () => {
+  const read = file => readFile(new URL(`../${file}`, import.meta.url), 'utf8');
+  const build = await read('build.mjs'), server = await read('server.mjs');
+  // Follow the imports from game.js: a module missing from either list breaks the page.
+  const seen = new Set(), queue = ['game.js'];
+  while (queue.length) {
+    const file = queue.pop(); if (seen.has(file)) continue; seen.add(file);
+    for (const [, dep] of (await read(file)).matchAll(/from '\.\/([\w-]+\.js)'/g)) queue.push(dep);
+  }
+  assert.ok(seen.has('visuals.js') && seen.has('album.js'));
+  for (const file of seen) { assert.match(build, new RegExp(`'${file}'`), `build: ${file}`); assert.match(server, new RegExp(`'${file}'`), `server: ${file}`); }
 });
 
 test('wreck, treasure and octopus draw safely in active and peaceful victory states', () => {
@@ -210,5 +215,12 @@ test('every world boss draws in every pose with balanced canvas state', () => {
     drawBoss(recording.ctx, kind, 600, 200, .9, 1.4, { maxHp: 8, ...boss, target: { x: -260, y: 80 } });
     recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
     assert.ok(recording.calls.length < 4000);
+  }
+});
+test('album fish draw rescued and locked with balanced canvas state', () => {
+  for (const locked of [false, true]) for (let seed = 0; seed < 4; seed++) {
+    const recording = recordingContext();
+    drawLetterFish(recording.ctx, 60, 40, 1, { color: '#8fe6c4', seed, time: 1.3, locked });
+    recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
   }
 });

@@ -26,7 +26,7 @@ class Element {
 }
 let focused = '';
 for (const reducedMotion of [false, true]) test(`UI: full expedition, victory reveal, pause and restart (reduced motion: ${reducedMotion})`, async () => {
-  const ids = ['scene', 'level', 'relaxed', 'record', 'keyboard', 'fingerHint', 'wordDisplay', 'depth', 'score', 'air', 'typing', 'status', 'feedback', 'welcome', 'results', 'pauseOverlay', 'pauseButton', 'resultLabel', 'resultTitle', 'resultMessage', 'resultWords', 'resultAccuracy', 'resultSpeed', 'againButton', 'resumeButton', 'startButton', 'homeButton', 'exitButton', 'soundButton', 'guideButton', 'handGuide', 'helpButton', 'help', 'closeHelp', 'helpReady', 'nextButton', 'targetList', 'points', 'oxygenFill', 'resultPoints', 'diverConsole', 'bossHud', 'bossBanner', 'scoreLabel', 'bossHp', 'bossHealth', 'bossHealthFill', 'bossAttackHint', 'oxygenHud', 'oxygenMeter', 'walletCoins', 'walletGems', 'shopButton', 'resultShopButton', 'shop', 'closeShop', 'skinGrid', 'shopCoins', 'shopGems', 'shopMessage', 'rewards', 'toast', 'coach', 'levelCards', 'resultStars', 'shopPreview', 'shopTabs', 'walletCoinsWrap', 'coopButton', 'coopBanner', 'coopText', 'leaveRoom', 'earn', 'coop', 'closeCoop', 'coopMenu', 'hostButton', 'codeInput', 'joinButton', 'coopWait', 'roomCode', 'cancelRoom', 'coopMessage', 'partnerHud', 'partnerText', 'emoteBar', 'coopResult', 'progressButton', 'progress', 'closeProgress', 'backupCode', 'copyBackup', 'downloadBackup', 'restoreInput', 'restoreFile', 'checkRestore', 'confirmRestore', 'progressMessage', 'progressStatus', 'storageStatus', 'walletCandyWrap', 'walletCandy', 'shopCandyWrap', 'shopCandy', 'dropNotice', 'inviteLink', 'copyInvite', 'eventBanner', 'levelLabel', 'hudBar', 'idlePanel', 'handsCanvas', 'handsButton', 'frenzyHud', 'frenzyBanner', 'frenzyTime', 'frenzyFill', 'frenzyMeter', 'frenzyInfo', 'bossName', 'bossBannerTitle', 'bossBannerText', 'frenzyPill'];
+  const ids = ['scene', 'level', 'relaxed', 'record', 'keyboard', 'fingerHint', 'wordDisplay', 'depth', 'score', 'air', 'typing', 'status', 'feedback', 'welcome', 'results', 'pauseOverlay', 'pauseButton', 'resultLabel', 'resultTitle', 'resultMessage', 'resultWords', 'resultAccuracy', 'resultSpeed', 'againButton', 'resumeButton', 'startButton', 'homeButton', 'exitButton', 'soundButton', 'guideButton', 'handGuide', 'helpButton', 'help', 'closeHelp', 'helpReady', 'nextButton', 'targetList', 'points', 'oxygenFill', 'resultPoints', 'diverConsole', 'bossHud', 'bossBanner', 'scoreLabel', 'bossHp', 'bossHealth', 'bossHealthFill', 'bossAttackHint', 'oxygenHud', 'oxygenMeter', 'walletCoins', 'walletGems', 'shopButton', 'resultShopButton', 'shop', 'closeShop', 'skinGrid', 'shopCoins', 'shopGems', 'shopMessage', 'rewards', 'toast', 'coach', 'levelCards', 'resultStars', 'shopPreview', 'shopTabs', 'walletCoinsWrap', 'coopButton', 'coopBanner', 'coopText', 'leaveRoom', 'earn', 'coop', 'closeCoop', 'coopMenu', 'hostButton', 'codeInput', 'joinButton', 'coopWait', 'roomCode', 'cancelRoom', 'coopMessage', 'partnerHud', 'partnerText', 'emoteBar', 'coopResult', 'progressButton', 'progress', 'closeProgress', 'backupCode', 'copyBackup', 'downloadBackup', 'restoreInput', 'restoreFile', 'checkRestore', 'confirmRestore', 'progressMessage', 'progressStatus', 'storageStatus', 'walletCandyWrap', 'walletCandy', 'shopCandyWrap', 'shopCandy', 'dropNotice', 'inviteLink', 'copyInvite', 'eventBanner', 'levelLabel', 'hudBar', 'idlePanel', 'handsCanvas', 'handsButton', 'frenzyHud', 'frenzyBanner', 'frenzyTime', 'frenzyFill', 'frenzyMeter', 'frenzyInfo', 'bossName', 'bossBannerTitle', 'bossBannerText', 'frenzyPill', 'depthItem', 'gameConsole', 'keyboardButton', 'keyboardArea', 'albumButton', 'resultAlbumButton', 'album', 'closeAlbum', 'albumSummary', 'albumFocus', 'albumGrid'];
   const elements = Object.fromEntries(ids.map(id => [id, new Element(id)]));
   const label = new Element(); elements.level.value = '0'; elements.relaxed.checked = true;
   const document = new Element();
@@ -50,6 +50,9 @@ for (const reducedMotion of [false, true]) test(`UI: full expedition, victory re
   try {
     await import(`../game.js?reducedMotion=${reducedMotion}`);
     assert.equal(elements.keyboard.children.length, 4);
+    // The guide keyboard can be hidden (and remembered); the typing panel then takes the center.
+    elements.keyboardButton.onclick(); assert.ok(elements.gameConsole.classes.has('no-keyboard')); assert.equal(store['buzo-keyboard-v1'], 'off');
+    elements.keyboardButton.onclick(); assert.ok(!elements.gameConsole.classes.has('no-keyboard')); assert.equal(elements.keyboardButton.textContent, 'Ocultar teclado guía');
     elements.startButton.onclick();
     assert.equal(elements.typing.disabled, true); assert.equal(elements.wordDisplay.textContent, '¡Al agua!');
     // Help freezes the dive, not just the game after entry.
@@ -93,6 +96,13 @@ for (const reducedMotion of [false, true]) test(`UI: full expedition, victory re
       advance(3);
     }
     assert.equal(elements.results.hidden, false); assert.equal(elements.resultWords.textContent, '32');
+    // The dive filled the album: A, the most common home-row letter, was typed plenty of times.
+    const saved = JSON.parse(store['buzo-album-v1']);
+    assert.ok(saved.caught.includes('a')); assert.ok(saved.letters.j.ok > 0);
+    assert.ok(elements.rewards.children.some(row => /en tu álbum/.test(row.textContent)));
+    elements.resultAlbumButton.onclick(); assert.equal(elements.album.open, true);
+    assert.equal(elements.albumGrid.children.length, 6); assert.equal(elements.albumGrid.children[3].children.length, 10);
+    assert.match(elements.albumSummary.textContent, /de 27 peces/); elements.closeAlbum.onclick();
     assert.equal(elements.bossHealth.attributes['aria-valuenow'], '0');
     assert.equal(elements.depth.textContent, '240 m');
     assert.notEqual(elements.resultAccuracy.textContent, '100%');

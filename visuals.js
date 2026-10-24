@@ -1076,3 +1076,27 @@ export function drawJellyfish(ctx, x, y, scale, time = 0, boss = {}) {
 }
 const BOSS_ART = { otto: drawOctopus, pinza: drawCrab, medusa: drawJellyfish };
 export function drawBoss(ctx, kind, x, y, scale, time = 0, boss = {}) { (BOSS_ART[kind] || drawOctopus)(ctx, x, y, scale, time, boss); }
+// A fish for the letter album, colored like the finger that types it. `seed` varies the pattern;
+// a fish not rescued yet is a dark silhouette.
+export function drawLetterFish(ctx, x, y, scale, options = {}) {
+  const { color = '#8fe6c4', seed = 0, time = 0, locked = false } = options;
+  const body = locked ? '#0f3a4a' : color, shade = locked ? '#0b2e3b' : '#00000026';
+  ctx.save(); ctx.translate(x, y + Math.sin(time * 2 + seed) * 2); ctx.scale(scale, scale);
+  const wag = Math.sin(time * 6 + seed) * 4;
+  polygon(ctx, [[-24, 0], [-42, -14 + wag], [-38, 0], [-42, 14 + wag]], body);
+  polygon(ctx, [[-24, 0], [-42, -14 + wag], [-38, 0], [-42, 14 + wag]], shade);
+  polygon(ctx, [[-8, -16], [seed % 2 ? 4 : 10, -28], [14, -15]], body);
+  ellipse(ctx, 0, 0, 30, 19, body);
+  if (!locked) {
+    const pattern = seed % 3;
+    if (pattern === 0) for (const sx of [-10, 2]) { ctx.save(); ctx.beginPath(); ctx.ellipse(0, 0, 30, 19, 0, 0, TAU); ctx.clip(); rounded(ctx, sx, -20, 5, 40, 2, '#ffffff66'); ctx.restore(); }
+    else if (pattern === 1) for (const [sx, sy, r] of [[-12, -6, 3], [-4, 6, 2.5], [-16, 6, 2]]) ellipse(ctx, sx, sy, r, r, '#ffffffaa');
+    else ellipse(ctx, 2, 8, 22, 8, '#ffffff55');
+    polygon(ctx, [[2, 4], [-6, 14], [8, 10]], shade);
+    ellipse(ctx, 16, -5, 6, 6, '#ffffff'); ellipse(ctx, 17.5, -5, 3, 3.4, '#163e51'); ellipse(ctx, 16.4, -6.6, 1, 1, '#ffffff');
+    ctx.strokeStyle = '#163e51'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(22, 4, 4, .2, 1.6); ctx.stroke();
+  } else {
+    ctx.strokeStyle = '#ffffff33'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(0, 0, 30, 19, 0, 0, TAU); ctx.stroke();
+  }
+  ctx.restore();
+}

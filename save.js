@@ -3,6 +3,7 @@
 // catches typos and accidental damage; it is not protection against editing.
 import { sanitizeWallet } from './skins.js';
 import { LEVELS } from './engine.js';
+import { sanitizeAlbum } from './album.js';
 const PREFIX = 'BUZO1';
 const SALT = 'buzo-de-letras';
 export const BACKUP_VERSION = 1;
@@ -40,8 +41,9 @@ export function sanitizeRecords(raw) {
   }
   return records;
 }
-export function makeBackup({ wallet, stars, records, sound }, now = Date.now()) {
-  const data = { v: BACKUP_VERSION, at: now, wallet: sanitizeWallet(wallet), stars: sanitizeStars(stars), records: sanitizeRecords(records), sound: sound !== false };
+// The album was added later: older codes without it restore an empty album.
+export function makeBackup({ wallet, stars, records, sound, album }, now = Date.now()) {
+  const data = { v: BACKUP_VERSION, at: now, wallet: sanitizeWallet(wallet), stars: sanitizeStars(stars), records: sanitizeRecords(records), sound: sound !== false, album: sanitizeAlbum(album) };
   const payload = toBase64Url(JSON.stringify(data));
   return `${PREFIX}-${payload}-${checksum(payload)}`;
 }
@@ -52,13 +54,16 @@ export function readBackup(text) {
     if (!match || checksum(match[1]) !== match[2]) return null;
     const data = JSON.parse(fromBase64Url(match[1]));
     if (!data || data.v !== BACKUP_VERSION) return null;
-    return { at: count(data.at, 8.64e15), wallet: sanitizeWallet(data.wallet), stars: sanitizeStars(data.stars), records: sanitizeRecords(data.records), sound: data.sound !== false };
+    return { at: count(data.at, 8.64e15), wallet: sanitizeWallet(data.wallet), stars: sanitizeStars(data.stars), records: sanitizeRecords(data.records), sound: data.sound !== false, album: sanitizeAlbum(data.album) };
   } catch { return null; }
 }
 export function describeBackup(data) {
   const stars = Object.values(data.stars).reduce((sum, value) => sum + value, 0);
   const candy = data.wallet.candy ? `${data.wallet.candy} caramelos, ` : '';
-  return `${data.wallet.coins} monedas, ${data.wallet.gems} gemas, ${candy}${data.wallet.owned.length} ${data.wallet.owned.length === 1 ? 'objeto' : 'objetos'} y ${stars} ${stars === 1 ? 'estrella' : 'estrellas'}`;
+  const fish = data.album?.caught.length || 0;
+  const things = `${data.wallet.coins} monedas, ${data.wallet.gems} gemas, ${candy}${data.wallet.owned.length} ${data.wallet.owned.length === 1 ? 'objeto' : 'objetos'}`;
+  const starText = `${stars} ${stars === 1 ? 'estrella' : 'estrellas'}`;
+  return fish ? `${things}, ${starText} y ${fish} ${fish === 1 ? 'pez' : 'peces'}` : `${things} y ${starText}`;
 }
 export const DAY = 86400000;
 // A backup is worth suggesting once there is something to lose and it is not recent.

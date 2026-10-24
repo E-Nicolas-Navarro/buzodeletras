@@ -1,15 +1,16 @@
+import { letterKey } from './album.js';
 // Worlds in learning order. `id` keys saved progress, so the order can change safely.
 // `events` picks the seasonal word list (null: row-only worlds keep their letters).
 export const LEVELS = [
-  { id: 'centro', tip: 'Fila central', name: 'El arrecife de las primeras letras', boss: 'otto', bossInterval: 9, fall: 5.5, reward: { coins: 60, gems: 1 }, events: null, seconds: 28,
+  { id: 'centro', tip: 'Fila central', name: 'El arrecife de las primeras letras', boss: 'otto', bossInterval: 9, fall: 9, reward: { coins: 60, gems: 1 }, events: null, seconds: 28,
     words: ['fff', 'jjj', 'fjf', 'jfj', 'asa', 'ala', 'sala', 'las', 'da', 'falla', 'falda', 'sal'] },
-  { id: 'arriba', tip: 'Fila de arriba', name: 'El bosque de algas altas', boss: 'pinza', bossInterval: 9, fall: 5.5, reward: { coins: 70, gems: 1 }, events: null, seconds: 27, isNew: true,
-    words: ['ola', 'red', 'isla', 'faro', 'agua', 'pato', 'sopa', 'ropa', 'rosa', 'hoja', 'lago', 'yate', 'popa', 'perla', 'salto', 'kayak', 'algas', 'ostra', 'pulpo', 'puerto', 'pirata', 'tesoro', 'tortuga', 'estrella', 'guitarra'] },
-  { id: 'abajo', tip: 'Fila de abajo', name: 'La fosa de las burbujas', boss: 'medusa', bossInterval: 9, fall: 5.5, reward: { coins: 80, gems: 2 }, events: 0, seconds: 26, isNew: true,
-    words: ['nube', 'boya', 'vela', 'buzo', 'nave', 'cebo', 'ancla', 'barco', 'banco', 'concha', 'cueva', 'brazo', 'marino', 'calamar', 'burbuja', 'ballena', 'cangrejo', 'oxígeno'] },
-  { id: 'laguna', tip: 'Palabras del mar', name: 'La laguna de las palabras', boss: 'otto', bossInterval: 8, fall: 5, reward: { coins: 90, gems: 2 }, events: 0, seconds: 24,
+  { id: 'arriba', tip: 'Fila de arriba', name: 'El bosque de algas altas', boss: 'pinza', bossInterval: 9, fall: 8.5, reward: { coins: 70, gems: 1 }, events: null, seconds: 27, isNew: true,
+    words: ['kiwi', 'yoyo', 'piña', 'ola', 'red', 'isla', 'faro', 'agua', 'pato', 'sopa', 'ropa', 'rosa', 'hoja', 'lago', 'yate', 'popa', 'perla', 'salto', 'kayak', 'algas', 'ostra', 'pulpo', 'puerto', 'pirata', 'tesoro', 'tortuga', 'estrella', 'guitarra'] },
+  { id: 'abajo', tip: 'Fila de abajo', name: 'La fosa de las burbujas', boss: 'medusa', bossInterval: 9, fall: 8.5, reward: { coins: 80, gems: 2 }, events: 0, seconds: 26, isNew: true,
+    words: ['taxi', 'nube', 'boya', 'vela', 'buzo', 'nave', 'cebo', 'ancla', 'barco', 'banco', 'concha', 'cueva', 'brazo', 'marino', 'calamar', 'burbuja', 'ballena', 'cangrejo', 'oxígeno'] },
+  { id: 'laguna', tip: 'Palabras del mar', name: 'La laguna de las palabras', boss: 'otto', bossInterval: 8, fall: 8, reward: { coins: 90, gems: 2 }, events: 0, seconds: 24,
     words: ['mar', 'ola', 'pez', 'sol', 'sal', 'azul', 'alga', 'isla', 'roca', 'luna', 'faro', 'remo', 'agua', 'bote', 'pato', 'nado'] },
-  { id: 'mar', tip: 'Todo el teclado', name: 'La expedición al mar abierto', boss: 'otto', bossInterval: 10, fall: 5.5, reward: { coins: 120, gems: 3 }, events: 1, seconds: 30,
+  { id: 'mar', tip: 'Todo el teclado', name: 'La expedición al mar abierto', boss: 'otto', bossInterval: 10, fall: 8.5, reward: { coins: 120, gems: 3 }, events: 1, seconds: 30,
     words: ['buzo', 'coral', 'barco', 'pulpo', 'arena', 'perla', 'delfín', 'océano', 'tiburón', 'estrella', 'caballito', 'cangrejo', 'tesoro', 'ballena', 'esponja', 'pequeño', 'pingüino'] }
 ];
 export const levelIndex = id => Math.max(0, LEVELS.findIndex(level => level.id === id));
@@ -35,9 +36,14 @@ export function fingerFor(char) {
   if (char === ' ') return { color: 'blue', name: 'pulgar', home: 'Espacio' };
   return { color: 'pink', name: 'meñique derecho', home: 'Ñ' };
 }
-export function makeDeck(level, random = Math.random, extra = []) {
-  const words = [...LEVELS[level].words, ...extra];
+// `focus` letters need practice: up to half the deck is words that use them, dealt first.
+export function makeDeck(level, random = Math.random, extra = [], focus = []) {
+  let words = [...LEVELS[level].words, ...extra];
   for (let i = words.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1)); [words[i], words[j]] = [words[j], words[i]]; }
+  if (focus.length) {
+    const practice = words.filter(word => [...word].some(char => focus.includes(letterKey(char)))).slice(0, 6);
+    words = [...practice, ...words.filter(word => !practice.includes(word))];
+  }
   // Start the first adventure at the index-finger anchors, not at a random word.
   if (LEVELS[level].id === 'centro') return ['fff', 'jjj', ...words.filter(word => !['fff', 'jjj'].includes(word))].slice(0, 12);
   return words.slice(0, 12);
@@ -60,7 +66,8 @@ export const OXYGEN = { mistake: 5, collision: 22, reward: 3, whale: 12 };
 // Each correct new letter against Otto buys a little time; a finished phrase resets his clock.
 export const BOSS_LETTER_BONUS = .3;
 // After Otto, the crew's boat drops treasure for a few seconds: catch it by typing, double points, no oxygen at stake.
-export const FRENZY = { seconds: 15, intro: 1.5, max: 5, lanes: 5, gems: 2 };
+// `drop` is the pause between pieces; `hurry` is how much faster they fall by the end.
+export const FRENZY = { seconds: 15, intro: 1.5, max: 4, lanes: 5, gems: 2, drop: 1.3, hurry: .2 };
 // Creature drawn for a word: short words are puffers, long ones hammerheads.
 export function creatureFor(word) { return word.length <= 3 ? 'puffer' : word.length >= 7 ? 'hammer' : 'shark'; }
 export function createRun(level, relaxed = false, random = Math.random, options = {}) {
@@ -71,7 +78,9 @@ export function createRun(level, relaxed = false, random = Math.random, options 
     mode: 'diving', level, relaxed, random, diveTime: 0, elapsed: 0,
     score: 0, points: 0, oxygen: 100, depth: 0, visualDepth: 0,
     attempts: 0, mistakes: 0, collisions: 0, streak: 0, bestStreak: 0, wave: 1, sharks: [],
-    deck: makeDeck(level, random, extra), cursor: 0, nextId: 1,
+    deck: makeDeck(level, random, extra, options.focus || []), focus: options.focus || [], cursor: 0, nextId: 1,
+    // Every try per album letter, in order ('1' right, '0' wrong), merged into the album when the run ends.
+    letters: {},
     spawnIn: 0, targetId: null, input: '', effects: [], won: false, boss: null,
     // Two-player team: oxygen, words and Otto's tentacles are shared between devices.
     coop: Boolean(options.coop), side: options.coop ? 'left' : null, partnerScore: 0, partnerCollisions: 0, pendingHits: 0
@@ -188,12 +197,13 @@ export function dropLoot(state) {
   const f = state.frenzy, active = activeSharks(state);
   if (active.length >= FRENZY.max) return null;
   const pool = state.words.filter(word => !active.some(loot => loot.word[0] === word[0]));
-  const lanes = [...Array(FRENZY.lanes).keys()].filter(lane => !active.some(loot => loot.lane === lane && loot.progress < .4));
+  // A neighbouring column must have moved on too, so word labels never sit side by side.
+  const lanes = [...Array(FRENZY.lanes).keys()].filter(lane => !active.some(loot => loot.lane === lane && loot.progress < .4 || Math.abs(loot.lane - lane) === 1 && loot.progress < .15));
   if (!pool.length || !lanes.length) return null;
   const word = pool[Math.floor(state.random() * pool.length)];
   const lane = lanes[Math.floor(state.random() * lanes.length)];
   // It speeds up as the clock runs out.
-  const hurry = 1 - .35 * (1 - f.time / FRENZY.seconds);
+  const hurry = 1 - FRENZY.hurry * (1 - f.time / FRENZY.seconds);
   const gems = f.gems + active.filter(loot => loot.kind === 'gem').length;
   const loot = {
     id: state.nextId++, word, side: 'top', lane, progress: 0, departure: null, flinch: 0, exitTime: 0,
@@ -216,6 +226,10 @@ function endIfNeeded(state) {
 }
 function recordInput(state, raw, word) {
   const result = assessInput(state.input, raw, word);
+  for (let i = result.value.length - result.added; i < result.value.length; i++) {
+    const key = letterKey(word[i]);
+    if (key) state.letters[key] = (state.letters[key] || '') + (result.value[i] === word[i] ? '1' : '0');
+  }
   state.input = result.value; state.attempts += result.added; state.mistakes += result.mistakes;
   if (result.mistakes) {
     state.streak = 0;
@@ -269,10 +283,10 @@ function typeFrenzy(state, raw) {
     state.points += gained; f.points += gained;
     if (target.kind === 'gem') f.gems++;
     target.departure = 'caught'; target.exitTime = 0;
-    state.effects.push({ text: target.kind === 'gem' ? '+1 gema' : `+${gained} ×2`, time: 0, kind: 'win' });
+    state.effects.push({ text: target.kind === 'gem' ? '+1 gema' : `+${gained} ×2`, time: 0, kind: 'win', id: target.id });
     result.kind = target.kind; result.loot = true; result.gained = gained; result.combo = f.combo;
     state.targetId = null; state.input = ''; ensureTarget(state);
-    f.spawnIn = Math.min(f.spawnIn, .3);
+    f.spawnIn = Math.min(f.spawnIn, .6);
   } else if (!state.input) {
     state.targetId = nearestShark(state)?.id ?? null;
   }
@@ -302,7 +316,7 @@ function tickFrenzy(state, dt) {
   f.spawnIn -= dt;
   if (f.spawnIn <= 0 || !activeSharks(state).length) {
     if (dropLoot(state)) events.push('drop');
-    f.spawnIn = .75;
+    f.spawnIn = FRENZY.drop;
   }
   return events;
 }

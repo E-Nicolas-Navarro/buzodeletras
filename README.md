@@ -16,9 +16,17 @@ Cinco mundos en orden de aprendizaje. Cada uno termina en una batalla de ocho fr
 
 El progreso (estrellas y récords) se guarda por mundo (`centro`, `arriba`, `abajo`, `laguna`, `mar`). Las partidas guardadas con la versión de tres niveles se convierten solas, también al restaurar un respaldo viejo.
 
+### Álbum de letras
+
+Cada tecla de las tres filas es un **pez** (27 en total). Se rescata al escribir esa letra bien 15 veces mientras los últimos 20 intentos tengan al menos 85 % de aciertos. Cada pez nuevo da 20 monedas; cada fila completa, 3 gemas; el álbum completo, 10 gemas. El álbum detecta las letras que más cuestan (las de menor puntería reciente) y las muestra como «¡Practicala!»: en la próxima inmersión hasta la mitad del mazo son palabras con esas letras. Se guarda en este navegador (`buzo-album-v1`) y viaja en el código de respaldo; los códigos viejos sin álbum restauran uno vacío.
+
+### Teclado guía
+
+El botón «Ocultar teclado guía» saca el teclado de referencia y las manos fantasma, y centra el panel donde se escribe. La elección se recuerda (`buzo-keyboard-v1`). Las manos fantasma son de «vidrio»: un contorno claro con relleno muy suave, así las letras se leen debajo; solo el dedo que tiene que tocar se pinta de su color.
+
 ### Frenesí del tesoro
 
-Al vencer al guardián en modo desafío, durante 15 segundos el barco de la expedición tira monedas y gemas desde la superficie. Se atrapan escribiendo su palabra: **puntos ×2** más un combo por cada atrapada seguida, y sin oxígeno en juego (lo que toca el fondo solo corta el combo). Paga 10 monedas por tesoro y hasta 2 gemas. En práctica no hay frenesí.
+Al vencer al guardián en modo desafío, durante 15 segundos el barco de la expedición tira monedas y gemas desde la superficie, sin apuro: tardan unos 8 segundos en llegar al fondo y hay como mucho cuatro a la vez. Se atrapan escribiendo su palabra: **puntos ×2** más un combo por cada atrapada seguida, y sin oxígeno en juego (lo que toca el fondo solo corta el combo). Paga 10 monedas por tesoro y hasta 2 gemas. En práctica no hay frenesí.
 
 ## Probar en tu computadora
 
@@ -136,6 +144,7 @@ Para ver los quince casos por separado con Node reciente: `node --test --test-is
 | `engine.js` | Reglas deterministas: tiburones, oleadas, objetivos, oxígeno, puntos y profundidad |
 | `game.js` | Control de partida, composición de escena, sonidos y récords locales |
 | `hands.js` | Manos fantasma sobre el teclado de referencia |
+| `album.js` | Álbum de letras: peces por tecla, rescate, premios y letras para practicar |
 | `visuals.js` | Ilustraciones y capas 2.5D del barco, buzo (poses, trajes, mascotas, estelas), criaturas, arrecifes y peces |
 | `skins.js` | Catálogo de trajes y accesorios, billetera y compras |
 | `events.js` | Calendario de eventos de temporada |

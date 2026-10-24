@@ -40,65 +40,82 @@ function stroke(ctx, points, width, color) {
   if (points.length === 3) ctx.quadraticCurveTo(...points[1], ...points[2]); else ctx.lineTo(...points[1]);
   ctx.stroke();
 }
-// Geometry of one hand from the home keys and the space bar.
+// Geometry of one hand from the home keys and the space bar: a rounded palm under the
+// bottom row, finger capsules that start inside it, and a thumb reaching the space bar.
 function handShape(layout, side) {
   const ids = side === 'L' ? ['L5', 'L4', 'L3', 'L2'] : ['R2', 'R3', 'R4', 'R5'];
   const homes = ids.map(id => layout.keys[HOME[id]]);
   const space = layout.keys[' '];
   if (homes.some(home => !home) || !space) return null;
   const k = homes[0].w, inner = side === 'L' ? 1 : -1;
-  // Knuckles sit a little below the bottom letter row, fanned like a real hand.
-  const knuckleY = space.y - k * .2;
+  const knuckleY = space.y - k * .5;
   const knuckles = homes.map((home, i) => {
     const fromIndex = side === 'L' ? 3 - i : i;
-    return [home.x + inner * k * (.1 + fromIndex * .06), knuckleY + fromIndex * k * .12];
+    return [home.x + inner * k * (.12 + fromIndex * .05), knuckleY + fromIndex * k * .1];
   });
-  const outerX = knuckles[side === 'L' ? 0 : 3][0] - inner * k * .3, innerX = knuckles[side === 'L' ? 3 : 0][0] + inner * k * .3;
-  const wristY = knuckleY + k * 1.45;
-  const palm = { outerX, innerX, topY: knuckleY, wristY, k, inner };
-  const thumbBase = [innerX - inner * k * .15, knuckleY + k * .75];
-  const thumbTip = [space.x - inner * space.w * .16, space.y];
-  return { ids, knuckles, palm, thumbBase, thumbTip, k };
+  const xs = knuckles.map(point => point[0]);
+  const rx = (Math.max(...xs) - Math.min(...xs)) / 2 + k * .22, ry = k * .7;
+  const palm = { cx: (Math.max(...xs) + Math.min(...xs)) / 2, top: knuckleY, rx, ry, tilt: inner * -.12, k };
+  const thumbBase = [palm.cx + inner * rx * .55, knuckleY + ry * .9];
+  const thumbTip = [space.x - inner * space.w * .14, space.y];
+  return { ids, knuckles, palm, thumbBase, thumbTip, k, inner };
 }
-// Palm outline: from the knuckle line down to a narrower, rounded wrist.
-function palmPath(ctx, palm) {
-  const { outerX, innerX, topY, wristY, k, inner } = palm;
-  const wristOuter = outerX + inner * k * .35, wristInner = innerX - inner * k * .25;
-  ctx.beginPath(); ctx.moveTo(outerX, topY);
-  ctx.quadraticCurveTo((outerX + innerX) / 2, topY - k * .25, innerX, topY + k * .1);
-  ctx.quadraticCurveTo(innerX + inner * k * .1, wristY - k * .5, wristInner, wristY);
-  ctx.lineTo(wristOuter, wristY);
-  ctx.quadraticCurveTo(outerX - inner * k * .1, wristY - k * .6, outerX, topY);
-  ctx.closePath();
+// Palm and wrist as one mitten-shaped path that narrows smoothly into the wrist;
+// `grow` widens it for the outline pass.
+function palmPath(ctx, palm, grow = 0) {
+  const { cx, top, rx, ry, tilt, k } = palm, w = rx + grow, g = grow;
+  ctx.save(); ctx.translate(cx, top); ctx.rotate(tilt);
+  ctx.beginPath(); ctx.moveTo(-w, k * .15);
+  ctx.bezierCurveTo(-w * 1.06, ry * .7, -w * .78, ry * 1.25, -w * .58, ry * 1.5);
+  ctx.lineTo(-w * .55, ry * 1.5 + k * 1.3 + g);
+  ctx.lineTo(w * .55, ry * 1.5 + k * 1.3 + g);
+  ctx.lineTo(w * .58, ry * 1.5);
+  ctx.bezierCurveTo(w * .78, ry * 1.25, w * 1.06, ry * .7, w, k * .1);
+  ctx.quadraticCurveTo(0, -k * .22 - g, -w, k * .15);
+  ctx.fill(); ctx.restore();
 }
-const fingerPath = (base, tip, k) => [base, [(base[0] * 2 + tip.x) / 3, (base[1] * 2 + tip.y) / 3 - k * .05], [tip.x, tip.y + k * .12]];
-const thumbPath = shape => [shape.thumbBase, [shape.thumbTip[0] + shape.palm.inner * shape.k * .3, shape.thumbBase[1] - shape.k * .05], shape.thumbTip];
-// Each hand is painted twice on a scratch canvas: a white rim, then a pale body.
-function silhouette(octx, shape, hands, rim) {
-  const { k } = shape, width = k * .46 + (rim ? 4 : 0), color = rim ? '#ffffff' : '#bfe3f2';
-  octx.fillStyle = color; octx.strokeStyle = color; octx.lineWidth = rim ? 4 : 0;
-  palmPath(octx, shape.palm); octx.fill(); if (rim) octx.stroke();
-  stroke(octx, thumbPath(shape), width * 1.1, color);
-  shape.ids.forEach((id, i) => { const tip = hands.tips[id]; if (tip) stroke(octx, fingerPath(shape.knuckles[i], tip, k), width, color); });
+const fingerPath = (base, tip, k) => [base, [(base[0] + tip.x) / 2, (base[1] + tip.y) / 2 + k * .04], [tip.x, tip.y + k * .06]];
+const thumbPath = shape => [shape.thumbBase, [shape.thumbTip[0] + shape.inner * shape.k * .45, shape.thumbBase[1] + shape.k * .05], shape.thumbTip];
+const FINGER = .38;
+// The whole hand as one solid shape; `grow` widens it by a few pixels to make an outline.
+function silhouette(octx, shape, hands, grow = 0) {
+  const { k } = shape, width = k * FINGER + grow * 2;
+  octx.fillStyle = '#ffffff';
+  palmPath(octx, shape.palm, grow);
+  stroke(octx, thumbPath(shape), width * 1.2, '#ffffff');
+  shape.ids.forEach((id, i) => { const tip = hands.tips[id]; if (tip) stroke(octx, fingerPath(shape.knuckles[i], tip, k), width, '#ffffff'); });
 }
 export function drawHands(ctx, hands, layout, width, height, time = 0, scratch = null) {
   ctx.clearRect(0, 0, width, height);
   const shapes = ['L', 'R'].map(side => handShape(layout, side)).filter(Boolean);
   if (!shapes.length) return;
-  // Painting opaque on a scratch canvas and laying it down translucent keeps
-  // overlapping fingers from turning into darker blotches.
-  const octx = scratch ? scratch.getContext('2d') : ctx;
-  if (scratch) { scratch.width = ctx.canvas.width; scratch.height = ctx.canvas.height; octx.setTransform(ctx.getTransform()); }
-  for (const rim of [true, false]) for (const shape of shapes) silhouette(octx, shape, hands, rim);
-  if (scratch) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = .34; ctx.drawImage(scratch, 0, 0); ctx.restore(); }
-  // Fingernails make each fingertip easy to read.
-  ctx.save(); ctx.globalAlpha = .5;
-  for (const shape of shapes) shape.ids.forEach(id => { const tip = hands.tips[id]; if (tip) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.ellipse(tip.x, tip.y - shape.k * .02, shape.k * .12, shape.k * .09, 0, 0, Math.PI * 2); ctx.fill(); } });
+  // Glass hands: a faint body and a crisp outline of the whole hand, so the letters stay readable.
+  // Both are painted opaque on a scratch canvas and laid down translucent, so overlaps never darken.
+  if (scratch) {
+    const octx = scratch.getContext('2d');
+    scratch.width = ctx.canvas.width; scratch.height = ctx.canvas.height; octx.setTransform(ctx.getTransform());
+    const layer = alpha => { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = alpha; ctx.drawImage(scratch, 0, 0); ctx.restore(); };
+    for (const shape of shapes) silhouette(octx, shape, hands);
+    layer(.12);
+    octx.save(); octx.setTransform(1, 0, 0, 1, 0, 0); octx.clearRect(0, 0, scratch.width, scratch.height); octx.restore();
+    for (const shape of shapes) silhouette(octx, shape, hands, 1.5);
+    octx.globalCompositeOperation = 'destination-out';
+    for (const shape of shapes) silhouette(octx, shape, hands);
+    octx.globalCompositeOperation = 'source-over';
+    layer(.7);
+  } else {
+    ctx.save(); ctx.globalAlpha = .15;
+    for (const shape of shapes) silhouette(ctx, shape, hands);
+    ctx.restore();
+  }
+  // Soft pads where each finger rests.
+  ctx.save(); ctx.globalAlpha = .45; ctx.fillStyle = '#ffffff';
+  for (const shape of shapes) shape.ids.forEach(id => { const tip = hands.tips[id]; if (tip) { ctx.beginPath(); ctx.arc(tip.x, tip.y + shape.k * .1, shape.k * .07, 0, Math.PI * 2); ctx.fill(); } });
   ctx.restore();
   // The finger to use glows in its keyboard color and its tip pulses on the key.
   const color = hands.color || '#ffffff';
   for (const shape of shapes) {
-    const w = shape.k * .46, pulse = 1 + Math.sin(time * 6) * .12;
+    const w = shape.k * FINGER, pulse = 1 + Math.sin(time * 6) * .12;
     let path = null, tip = null;
     if (hands.active === 'thumbs') { path = thumbPath(shape); tip = shape.thumbTip; }
     else {
@@ -106,8 +123,8 @@ export function drawHands(ctx, hands, layout, width, height, time = 0, scratch =
       if (index >= 0) { const t = hands.tips[hands.active]; path = fingerPath(shape.knuckles[index], t, shape.k); tip = [t.x, t.y]; }
     }
     if (!path) continue;
-    ctx.save(); ctx.globalAlpha = .9; ctx.shadowColor = color; ctx.shadowBlur = 16;
-    stroke(ctx, path, hands.active === 'thumbs' ? w * 1.1 : w, color);
+    ctx.save(); ctx.globalAlpha = .85; ctx.shadowColor = color; ctx.shadowBlur = 10;
+    stroke(ctx, path, hands.active === 'thumbs' ? w * 1.15 : w, color);
     ctx.restore();
     ring(ctx, tip[0], tip[1], shape.k * .38 * pulse, color);
   }

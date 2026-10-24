@@ -281,3 +281,19 @@ test('the frenzy pays coins per treasure and at most a couple of gems; practice 
   for (let i = 0; i < BOSS_HITS; i++) complete(practice);
   assert.equal(practice.mode, 'ended'); assert.equal(practice.frenzy, undefined);
 });
+
+import { letterKey } from '../album.js';
+test('every try is tallied per album letter, in order, and focus letters fill the deck', () => {
+  const state = ready(levelIndex('laguna'), true); state.sharks = []; state.targetId = null;
+  const shark = spawnShark(state), word = shark.word;
+  typeInRun(state, word[0]); typeInRun(state, `${word[0]}@`); typeInRun(state, word[0]); typeInRun(state, word.slice(0, 2));
+  assert.equal(state.letters[letterKey(word[0])][0], '1');
+  assert.ok(state.letters[letterKey(word[1])].startsWith('01'));
+  const focused = makeDeck(levelIndex('mar'), () => .5, [], ['ñ']);
+  const withÑ = LEVELS[levelIndex('mar')].words.filter(entry => entry.includes('ñ'));
+  assert.deepEqual(focused.slice(0, withÑ.length).sort(), withÑ.sort());
+  assert.deepEqual(createRun(0, false, Math.random, { focus: ['f'] }).focus, ['f']);
+  // Words for every letter exist somewhere, so each fish can be rescued.
+  const all = new Set(LEVELS.flatMap(level => [...level.words.join('')].map(letterKey)));
+  for (const letter of 'qwertyuiopasdfghjklñzxcvbnm') assert.ok(all.has(letter), letter);
+});

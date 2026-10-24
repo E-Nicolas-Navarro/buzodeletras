@@ -1,10 +1,11 @@
-import { drawBoat, drawBoatShadow, drawDiver, drawOceanBackdrop, drawOceanForeground, drawShipwreck, drawBoss, drawCreature, drawLoot, diverTop } from './visuals.js';
+import { drawBoat, drawBoatShadow, drawDiver, drawOceanBackdrop, drawOceanForeground, drawShipwreck, drawBoss, drawCreature, drawLoot, drawLetterFish, diverTop } from './visuals.js';
 import { LEVELS, MISSION_WORDS, BOSS_HITS, FRENZY, bossOf, currentWord, fingerFor, accuracy, computeRewards, starsFor, refreshRun, partnerBossHit, bossAttackDamage, createRun, activeSharks, chooseTarget, typeInRun, tickRun } from './engine.js';
 import { SKINS, SLOTS, ACCESSORIES, skinById, sanitizeWallet, canAfford, buySkin, equipSkin, equipGear, priceOf, onSale } from './skins.js';
 import { makeBackup, readBackup, describeBackup, needsBackup, backupAge, sanitizeStars, sanitizeRecords } from './save.js';
 import { loadPeer, hostRoom, joinRoom, normalizeCode, inviteLink, codeFromLink, EMOTES } from './net.js';
 import { currentEvent, eventWords } from './events.js';
-import { createHands, stepHands, drawHands } from './hands.js';
+import { createHands, stepHands, drawHands, COLORS } from './hands.js';
+import { ALBUM_ROWS, LETTERS, RESCUE, ALBUM_PRIZE, sanitizeAlbum, recordRun, albumRewards, weakLetters, lettersIn, accuracyOf, progressOf } from './album.js';
 const $ = id => document.getElementById(id);
 const canvas = $('scene'), ctx = canvas.getContext('2d');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -26,6 +27,9 @@ let lastBackup = 0;
 try { lastBackup = Number(JSON.parse(localStorage.getItem('buzo-backup-v1') || '{}').at) || 0; } catch { /* Optional. */ }
 let wallet = sanitizeWallet(null);
 try { wallet = sanitizeWallet(JSON.parse(localStorage.getItem('buzo-wallet-v1') || 'null')); } catch { /* Persistence is optional. */ }
+let album = sanitizeAlbum(null);
+try { album = sanitizeAlbum(JSON.parse(localStorage.getItem('buzo-album-v1') || 'null')); } catch { /* Persistence is optional. */ }
+function saveAlbum() { try { localStorage.setItem('buzo-album-v1', JSON.stringify(album)); } catch { /* Optional in private browsing. */ } }
 function saveWallet() {
   try { localStorage.setItem('buzo-wallet-v1', JSON.stringify(wallet)); } catch { /* Optional in private browsing. */ }
   $('walletCoins').textContent = wallet.coins; $('walletGems').textContent = wallet.gems; $('walletCandy').textContent = wallet.candy;
@@ -37,7 +41,7 @@ const capital = text => text.charAt(0).toUpperCase() + text.slice(1);
 // Modes where the typing box is live.
 const typingMode = () => ['playing', 'boss', 'frenzy'].includes(state.mode);
 const inFrenzy = () => state.mode === 'frenzy' || state.mode === 'paused' && pausedMode === 'frenzy';
-const modalOpen = () => $('help').open || $('shop').open || $('coop').open || $('progress').open;
+const modalOpen = () => $('help').open || $('shop').open || $('coop').open || $('progress').open || $('album').open;
 // ----- Two-player room: shared oxygen, words and boss, one device each -----
 let room = null, linked = false, partner = null, coopNote = '', syncClock = 0, waitingPartner = false;
 // Oxygen is decided by the host. The guest numbers its own changes and keeps the ones
@@ -190,6 +194,8 @@ function beep(kind) {
     });
   } catch { /* Audio is optional. */ }
 }
+// Banners speak for themselves: a toast would cover them.
+function quietToast() { $('toast').classList.remove('show'); }
 function toast(text, kind = 'win') {
   const el = $('toast'); el.textContent = text; el.className = `toast ${kind}`;
   void el.offsetWidth; el.classList.add('show');
@@ -254,6 +260,8 @@ function updateTargets() {
 }
 function hud() {
   $('depth').textContent = `${state.depth} m`;
+  // At the guardian the depth is always 240 m: hiding it leaves room for the guardian's panel.
+  $('depthItem').hidden = Boolean(state.boss);
   $('scoreLabel').textContent = state.frenzy ? 'Tesoro' : state.boss ? boss().short : state.coop ? 'Equipo' : 'Palabras';
   $('score').textContent = state.frenzy ? `${state.frenzy.caught}` : state.boss ? `${BOSS_HITS - state.boss.hp} / ${BOSS_HITS}` : `${state.score + state.partnerScore} / ${MISSION_WORDS}`;
   $('partnerHud').hidden = !state.coop || ['welcome', 'results'].includes(state.mode);
@@ -272,9 +280,33 @@ function hud() {
   document.querySelector('.sea-label').textContent = state.frenzy ? `${boss().lair} · ¡Frenesí del tesoro!` : state.boss ? `${boss().lair} · 240 m` : `${LEVELS[state.level].name} · Oleada ${state.wave}`;
   updateBossHud(); updateFrenzyHud();
 }
+// Lowest edge of the panels along the top of the scene, so drawings and labels stay below them.
+function topSafe() {
+  let bottom = 48;
+  for (const id of ['hudBar', 'partnerHud', 'bossHud', 'frenzyHud']) {
+    const el = $(id), edge = el.offsetTop + el.offsetHeight;
+    if (!el.hidden && Number.isFinite(edge) && el.offsetHeight) bottom = Math.max(bottom, edge);
+  }
+  return bottom;
+}
+// The guardian and frenzy panels share the top row with the counters when there is room; otherwise they sit just below.
+function placeTopPanel(panel) {
+  const bar = $('hudBar'), pause = $('pauseButton'), mate = $('partnerHud'), width = panel.offsetParent?.clientWidth;
+  if (panel.hidden || !width || !Number.isFinite(bar.offsetLeft)) return;
+  const left = bar.offsetLeft + bar.offsetWidth + 10, right = (pause.offsetParent ? pause.offsetLeft : width) - 10;
+  const size = Math.min(430, right - left);
+  if (size >= 250) {
+    const x = Math.max(left, Math.min(right - size, (width - size) / 2));
+    Object.assign(panel.style, { top: `${bar.offsetTop}px`, left: `${x}px`, width: `${size}px`, transform: 'none' });
+  } else {
+    const below = Math.max(bar.offsetTop + bar.offsetHeight, mate.hidden ? 0 : mate.offsetTop + mate.offsetHeight) + 6;
+    Object.assign(panel.style, { top: `${below}px`, left: '8px', width: `${width - 16}px`, transform: 'none' });
+  }
+}
 function updateFrenzyHud() {
   const f = state.frenzy, live = Boolean(f) && inFrenzy();
   $('frenzyBanner').hidden = !live || f.intro <= 0;
+  if (!$('frenzyBanner').hidden) quietToast();
   $('frenzyHud').hidden = !live || f.intro > 0;
   if (!f) return;
   const seconds = Math.ceil(f.time);
@@ -282,11 +314,12 @@ function updateFrenzyHud() {
   $('frenzyFill').style.width = `${f.time / FRENZY.seconds * 100}%`;
   $('frenzyMeter').setAttribute('aria-valuenow', String(seconds));
   $('frenzyHud').classList.toggle('hurry', f.time <= 4);
+  placeTopPanel($('frenzyHud'));
   $('frenzyInfo').textContent = f.combo >= 2 ? `¡Combo ×${f.combo}! · ${f.caught} atrapados · puntos ×2` : `${f.caught} atrapados · escribí la palabra antes de que toque el fondo · puntos ×2`;
 }
 function frenzyStarted() {
+  // The frenzy banner already announces it, so no toast on top of it.
   burst(ottoAt, '#ffe27a', 26); beep('prize');
-  toast(`¡${capital(boss().name)} se hizo tu amigo! ¡Frenesí del tesoro!`);
   $('status').textContent = '¡Ganaste! Desde el barco cae el tesoro: escribí sus palabras para atraparlo.';
   $('feedback').textContent = 'Puntos ×2 y sin oxígeno en juego.';
 }
@@ -297,7 +330,7 @@ function updateBossHud() {
   $('bossName').textContent = guardian.title; $('frenzyPill').textContent = `¡${capital(guardian.name)} es tu amigo!`;
   $('bossBannerTitle').textContent = `¡${capital(guardian.kind)}!`;
   $('bossBannerText').textContent = `${capital(guardian.name)} protege el tesoro del barco hundido. Escribí 8 frases, incluyendo el espacio. Cada letra bien escrita lo frena y cada frase reinicia su reloj.`;
-  $('bossHp').textContent = `${state.boss.hp} / ${BOSS_HITS}`;
+  $('bossHp').textContent = `${state.boss.hp} / ${BOSS_HITS}`; placeTopPanel($('bossHud'));
   $('bossHealthFill').style.width = `${state.boss.hp / BOSS_HITS * 100}%`;
   $('bossHealth').setAttribute('aria-valuenow', String(state.boss.hp));
   const warning = !state.relaxed && state.mode === 'boss' && state.boss.attackIn <= 1.5;
@@ -309,6 +342,7 @@ function sync() {
   $('typing').value = state.input; $('typing').disabled = !canType;
   $('diverConsole').hidden = !canType; $('idlePanel').hidden = canType;
   $('bossBanner').hidden = state.mode !== 'bossIntro';
+  if (!$('bossBanner').hidden) quietToast();
   $('targetList').hidden = !['playing', 'frenzy'].includes(state.mode);
   updateWord(); updateTargets(); hud();
   if (canType && !state.relaxed && state.mode !== 'frenzy') {
@@ -318,14 +352,16 @@ function sync() {
 }
 function start() {
   const level = Number($('level').value);
-  state = createRun(level, $('relaxed').checked, Math.random, { coop: coopActive(), event: season?.id, eventWords: eventWords(season, LEVELS[level].events) });
+  // Letters the album says need practice show up in more of this world's words.
+  const focus = weakLetters(album, lettersIn(LEVELS[level].words));
+  state = createRun(level, $('relaxed').checked, Math.random, { coop: coopActive(), event: season?.id, eventWords: eventWords(season, LEVELS[level].events), focus });
   sendHello(); syncClock = 0; emotes.length = 0; o2Seq = 0; o2Pending = []; o2Ack = 0;
   particles.length = 0; lootStart.clear(); Object.assign(anim, { cheer: 0, hurt: 0, type: 0, flip: false });
   if (reducedMotion) state.diveTime = 1.5;
   $('welcome').hidden = true; $('results').hidden = true; $('pauseOverlay').hidden = true; $('targetList').hidden = false;
   $('pauseButton').disabled = false; $('pauseButton').textContent = 'Pausar';
   $('status').textContent = '¡Saltamos! Prepará los dedos en F y J.';
-  $('feedback').textContent = 'Escribí para sumar. Cuidá tu oxígeno.';
+  $('feedback').textContent = focus.length ? `Hoy practicamos ${letterList(focus)}: vas a ver más palabras con ${focus.length === 1 ? 'esa letra' : 'esas letras'}.` : 'Escribí para sumar. Cuidá tu oxígeno.';
   targetSignature = 'reset'; lowWarned = false; $('toast').className = 'toast'; $('coach').hidden = true; sync();
 }
 function amount(value, kind, sign = '+') {
@@ -344,7 +380,7 @@ function showRewards(rewards) {
     if (candy) div.append(amount(candy, 'candy'));
     div.style.animationDelay = `${box.children.length * .18}s`; box.append(div);
   };
-  for (const item of rewards.items) if (item.coins || item.gems || item.candy) row(item.label, item.coins, item.gems, item.candy, /tibur|ballena|dorado|frenes/i.test(item.label) ? 'bonus' : '');
+  for (const item of rewards.items) if (item.coins || item.gems || item.candy) row(item.label, item.coins, item.gems, item.candy, /tibur|ballena|dorado|frenes|pez|peces|álbum/i.test(item.label) ? 'bonus' : '');
   row('Total ganado', rewards.coins, rewards.gems, rewards.candy, 'reward-total');
   for (const id of ['walletCoinsWrap', 'walletGems']) { const chip = $(id); chip.classList.remove('bump'); void chip.offsetWidth; chip.classList.add('bump'); }
 }
@@ -372,7 +408,13 @@ function finish() {
     try { localStorage.setItem('buzo-records-v4', JSON.stringify(records)); } catch { /* Optional in private browsing. */ }
   }
   if (!state.rewarded) {
-    state.rewarded = computeRewards(state); wallet.coins += state.rewarded.coins; wallet.gems += state.rewarded.gems; wallet.candy += state.rewarded.candy; saveWallet(); void protectStorage();
+    state.rewarded = computeRewards(state);
+    // Every letter typed in this dive feeds the album; new fish and full rows add their prizes.
+    const news = recordRun(album, state.letters); album = news.album; saveAlbum();
+    for (const item of albumRewards(news)) {
+      state.rewarded.items.push(item); state.rewarded.coins += item.coins; state.rewarded.gems += item.gems;
+    }
+    wallet.coins += state.rewarded.coins; wallet.gems += state.rewarded.gems; wallet.candy += state.rewarded.candy; saveWallet(); void protectStorage();
   }
   const earned = starsFor(state);
   if (earned > (Number(stars[LEVELS[state.level].id]) || 0)) {
@@ -586,7 +628,7 @@ async function protectStorage() {
   try { if (navigator.storage?.persist) return await navigator.storage.persist(); } catch { /* Optional. */ }
   return false;
 }
-const snapshot = () => ({ wallet, stars, records, sound });
+const snapshot = () => ({ wallet, stars, records, sound, album });
 function markBackup() {
   lastBackup = Date.now();
   try { localStorage.setItem('buzo-backup-v1', JSON.stringify({ at: lastBackup })); } catch { /* Optional. */ }
@@ -624,7 +666,7 @@ function checkRestore() {
 }
 function applyRestore() {
   if (!pendingRestore) return;
-  ({ wallet, stars, records, sound } = { ...pendingRestore });
+  ({ wallet, stars, records, sound, album } = { ...pendingRestore }); saveAlbum();
   try {
     localStorage.setItem('buzo-records-v4', JSON.stringify(records)); localStorage.setItem('buzo-stars-v1', JSON.stringify(stars));
     localStorage.setItem('buzo-sound-v1', sound ? 'on' : 'off');
@@ -640,6 +682,45 @@ $('restoreFile').addEventListener('change', async event => {
   const file = event.target.files?.[0]; if (!file) return;
   try { $('restoreInput').value = (await file.text()).slice(0, 20000); checkRestore(); } catch { progressMessage('No se pudo leer el archivo.', true); }
 });
+// ----- Letter album -----
+// "la X", "la X y la B", "la X, la B y la Ñ".
+function letterList(letters) {
+  const named = letters.map(letter => `la ${letter.toUpperCase()}`);
+  return named.length > 1 ? `${named.slice(0, -1).join(', ')} y ${named.at(-1)}` : named[0] || '';
+}
+function fishCard(letter, weak) {
+  const entry = album.letters[letter], caught = album.caught.includes(letter);
+  const card = document.createElement('div'); card.className = `fish-card ${caught ? 'caught' : ''} ${weak ? 'weak' : ''}`;
+  const view = document.createElement('canvas'); view.width = 120; view.height = 76; view.setAttribute('aria-hidden', 'true');
+  const paint = view.getContext('2d');
+  if (paint) drawLetterFish(paint, 64, 40, 1, { color: COLORS[fingerFor(letter).color], seed: LETTERS.indexOf(letter), locked: !caught });
+  const name = document.createElement('strong'); name.textContent = letter.toUpperCase();
+  const meter = document.createElement('span'); meter.className = 'fish-meter';
+  const fill = document.createElement('i'); fill.style.width = `${caught ? 100 : Math.round(progressOf(entry) * 100)}%`; meter.append(fill);
+  const note = document.createElement('small');
+  note.textContent = caught ? '¡Rescatado!' : weak ? '¡Practicala!' : entry ? `${Math.min(entry.ok, RESCUE.hits)} de ${RESCUE.hits} · ${accuracyOf(entry)}% bien` : 'Todavía no la escribiste';
+  card.setAttribute('aria-label', `Letra ${letter.toUpperCase()}: ${note.textContent}`);
+  card.append(view); card.append(name); card.append(meter); card.append(note);
+  return card;
+}
+function renderAlbum() {
+  $('albumSummary').textContent = `Rescataste ${album.caught.length} de ${LETTERS.length} peces. Escribí cada letra bien ${RESCUE.hits} veces, con buena puntería, para rescatar su pez: +${ALBUM_PRIZE.fish} monedas por pez y +${ALBUM_PRIZE.row} gemas por fila completa.`;
+  const weak = weakLetters(album);
+  $('albumFocus').hidden = !weak.length;
+  $('albumFocus').textContent = `Para practicar: ${weak.map(letter => letter.toUpperCase()).join(', ')}. En tus próximas inmersiones vas a ver más palabras con ${weak.length === 1 ? 'esa letra' : 'esas letras'}.`;
+  $('albumGrid').replaceChildren();
+  for (const row of ALBUM_ROWS) {
+    const done = [...row.letters].filter(letter => album.caught.includes(letter)).length;
+    const title = document.createElement('h3'); title.className = 'shop-section'; title.textContent = `${row.title} · ${done} de ${row.letters.length}`;
+    const grid = document.createElement('div'); grid.className = 'album-grid';
+    for (const letter of row.letters) grid.append(fishCard(letter, weak.includes(letter)));
+    $('albumGrid').append(title); $('albumGrid').append(grid);
+  }
+}
+function openAlbum() { pause(); renderAlbum(); $('album').showModal(); }
+$('albumButton').onclick = $('resultAlbumButton').onclick = openAlbum;
+$('closeAlbum').onclick = () => $('album').close();
+$('album').addEventListener('close', () => { if (state.mode === 'paused') $('resumeButton').focus(); });
 function openShop() { pause(); $('shopMessage').textContent = ''; renderShop(); $('shop').showModal(); }
 $('shopButton').onclick = $('resultShopButton').onclick = openShop;
 $('closeShop').onclick = () => $('shop').close();
@@ -659,6 +740,19 @@ const hands = createHands();
 let handsLayout = { keys: {} }, handsSize = { width: 0, height: 0 }, handsFresh = true;
 let handsOn = true;
 try { handsOn = localStorage.getItem('buzo-hands-v1') !== 'off'; } catch { /* Optional. */ }
+// The whole reference keyboard can be hidden; the typing panel then sits centered.
+let keyboardOn = true;
+try { keyboardOn = localStorage.getItem('buzo-keyboard-v1') !== 'off'; } catch { /* Optional. */ }
+function showKeyboard() {
+  $('gameConsole').classList.toggle('no-keyboard', !keyboardOn);
+  $('keyboardButton').textContent = keyboardOn ? 'Ocultar teclado guía' : 'Mostrar teclado guía';
+  $('keyboardButton').setAttribute('aria-pressed', String(keyboardOn));
+}
+$('keyboardButton').onclick = () => {
+  keyboardOn = !keyboardOn; showKeyboard();
+  try { localStorage.setItem('buzo-keyboard-v1', keyboardOn ? 'on' : 'off'); } catch { /* Optional. */ }
+  if (typingMode()) $('typing').focus();
+};
 function showHands() {
   handsCanvas.classList.toggle('off', !handsOn);
   $('handsButton').textContent = `Manos guía: ${handsOn ? 'sí' : 'no'}`; $('handsButton').setAttribute('aria-pressed', String(handsOn));
@@ -683,7 +777,7 @@ $('handsButton').onclick = () => {
   try { localStorage.setItem('buzo-hands-v1', handsOn ? 'on' : 'off'); } catch { /* Optional. */ }
 };
 function renderHands(dt) {
-  if (!handsOn || !handsSize.width) return;
+  if (!handsOn || !keyboardOn || !handsSize.width) return;
   stepHands(hands, handsLayout, guideChar, dt, reducedMotion || handsFresh); handsFresh = false;
   drawHands(hctx, hands, handsLayout, handsSize.width, handsSize.height, reducedMotion ? 0 : clock, handsScratch);
 }
@@ -766,7 +860,8 @@ function draw() {
       ctx.textAlign = 'center'; ctx.font = 'bold 12px Trebuchet MS'; ctx.fillStyle = '#e6f5f4'; ctx.fillText('Tu compañero', px, py + (small ? 45 : 70));
     }
     drawCreature(ctx, 'shark', width * .85, height * .57, small ? .45 : .8, { time: t, costume: theme });
-    label('mar', width * .85, height * .57, height * .57 - 85, false);
+    // On narrow screens the welcome panel covers the scene: a label would show through behind its text.
+    if (width >= 600) label('mar', width * .85, height * .57, height * .57 - 85, false);
     return;
   }
   const diverFrac = state.coop ? .33 : .5;
@@ -785,7 +880,9 @@ function draw() {
     }
     const entryY = -80 + (diverY + 80) * eased;
     drawDiver(ctx, diverX, entryY, scale, t, 0, wallet.equipped, wallet.gear);
-    $('oxygenHud').style.top = `${Math.max(8, hudTop(entryY, scale))}px`;
+    // While the diver is still coming down from the boat, the meter would cover its head: it appears once there is room.
+    const air = hudTop(entryY, scale), room = topSafe() + 4;
+    $('oxygenHud').style.visibility = air < room ? 'hidden' : ''; $('oxygenHud').style.top = `${Math.max(room, air)}px`;
     ctx.font = 'bold 24px Trebuchet MS'; ctx.textAlign = 'center'; ctx.fillStyle = '#f0f7f4';
     ctx.fillText('¡Al agua!', width / 2, height * .85);
     return;
@@ -810,8 +907,8 @@ function draw() {
   const lootX = loot => width * (.12 + loot.lane * .19);
   const look = frenzy ? (target ? Math.max(-1, Math.min(1, (lootX(target) - diverX) / (width * .3))) : 0) : state.boss ? 1 : target ? (target.side === 'left' ? -1 : 1) : 0;
   drawDiver(ctx, diverX, diverY + bob, scale, t, state.visualDepth, wallet.equipped, wallet.gear, pose(look));
-  const myHud = hudTop(diverY + bob, scale);
-  $('oxygenHud').style.top = `${myHud}px`;
+  const safe = topSafe(), myHud = Math.max(safe + 4, hudTop(diverY + bob, scale));
+  $('oxygenHud').style.top = `${myHud}px`; $('oxygenHud').style.visibility = '';
   if (state.coop) {
     const px = width * .55, py = diverY + Math.sin(t * 1.5 + 2) * 4, mate = partner || { skin: 'clasico', gear: {} };
     drawDiver(ctx, px, py, scale, t + 1, state.visualDepth, mate.skin, mate.gear, { look: 1 });
@@ -832,13 +929,14 @@ function draw() {
     const throwing = Math.min(1, loot.progress / .15), from = lootStart.get(loot.id);
     const x = from + (lootX(loot) - from) * (1 - (1 - throwing) ** 2);
     const exit = loot.departure ? (reducedMotion ? 1 : Math.min(1, loot.exitTime / .6)) : 0;
-    let y = 44 + (height * .9 - 44) * loot.progress - Math.sin(Math.PI * throwing) * 18;
+    const labelGap = width < 500 ? 62 : 72, startY = Math.min(height * .5, safe + labelGap + 4);
+    let y = startY + (height * .9 - startY) * loot.progress - Math.sin(Math.PI * throwing) * 18;
     if (loot.departure === 'caught') y -= exit * 30;
     lastPos.set(loot.id, { x, y });
     ctx.save(); if (loot.departure === 'lost') ctx.globalAlpha = 1 - exit;
     drawLoot(ctx, loot.kind, x, y, width < 500 ? .75 : 1, { time: t, id: loot.id, flinch: reducedMotion ? 0 : loot.flinch, caught: loot.departure === 'caught' ? exit : 0 });
     ctx.restore();
-    if (!loot.departure) label(loot.word, x, y, y < 140 ? y + 26 : y - (width < 500 ? 62 : 72), loot.id === state.targetId, false);
+    if (!loot.departure) label(loot.word, x, y, Math.max(safe + 4, y - labelGap), loot.id === state.targetId, false);
   }
   for (const enemy of frenzy ? [] : state.sharks) {
     const startX = width * (enemy.side === 'left' ? .1 : .9);
@@ -861,15 +959,22 @@ function draw() {
     });
     // Labels stay below the floating counters at the top of the ocean.
     const lift = (width < 500 ? 43 : 58) + (enemy.kind === 'puffer' ? 12 : 0);
-    if (!fleeing) label(enemy.word, x, y, Math.max(48, Math.min(height * .63, height * laneY[enemy.lane] - lift)), enemy.id === state.targetId);
+    if (!fleeing) label(enemy.word, x, y, Math.max(safe + 4, Math.min(height * .63, height * laneY[enemy.lane] - lift)), enemy.id === state.targetId);
   }
   if (!state.relaxed && state.oxygen <= 30) {
     ctx.strokeStyle = '#ef8f83'; ctx.lineWidth = 3; ctx.strokeRect(2, 2, width - 4, height - 4);
   }
+  // Floating points: treasure shows them where it was caught; above the diver only the newest one,
+  // since the toast repeats it and there is little room under the top panels.
+  const newest = state.effects.filter(effect => !effect.id).at(-1);
   for (const effect of state.effects) {
+    const at = effect.id ? (effect.at ||= lastPos.get(effect.id)) : null;
+    if (!at && effect !== newest) continue;
+    const rise = reducedMotion ? 0 : effect.time * 28;
+    const y = Math.max(safe + 22, at ? at.y - 30 - rise : myHud - 10 - rise);
     ctx.globalAlpha = Math.max(0, 1 - effect.time / 1.2);
-    ctx.font = 'bold 23px Trebuchet MS'; ctx.fillStyle = effect.kind === 'win' ? '#ffdb70' : '#ffa99b';
-    ctx.fillText(effect.text, diverX, myHud - 10 - (reducedMotion ? 0 : effect.time * 28));
+    ctx.font = `bold ${at && width < 500 ? 17 : 23}px Trebuchet MS`; ctx.fillStyle = effect.kind === 'win' ? '#ffdb70' : '#ffa99b';
+    ctx.fillText(effect.text, at ? at.x : diverX, y);
     ctx.globalAlpha = 1;
   }
   drawParticles();
@@ -922,4 +1027,4 @@ function frame(now) {
   draw(); renderHands(dt); requestAnimationFrame(frame);
 }
 if (season) { $('eventBanner').hidden = false; $('eventBanner').textContent = `🎃 ${season.name} · ¡ganá caramelos!`; $('eventBanner').title = season.blurb; }
-showHands(); measureHands(); resize(); saveWallet(); showSound(); renderLobby(); showRecord(); hud(); requestAnimationFrame(frame);
+showKeyboard(); showHands(); measureHands(); resize(); saveWallet(); showSound(); renderLobby(); showRecord(); hud(); requestAnimationFrame(frame);

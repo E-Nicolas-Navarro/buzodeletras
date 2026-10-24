@@ -42,3 +42,12 @@ test('backup reminders appear only when there is progress and the backup is old'
   assert.equal(backupAge(0, now), 'todavía no guardaste un respaldo'); assert.equal(backupAge(now - 3 * DAY, now), 'último respaldo: hace 3 días');
   assert.equal(backupAge(now - DAY, now), 'último respaldo: hace 1 día'); assert.match(describeBackup(readBackup(makeBackup(progress()))), /300 monedas, 6 gemas, 3 objetos y 5 estrellas/);
 });
+
+import { recordRun, emptyAlbum } from '../album.js';
+test('the album travels in backups; older codes without one restore an empty album', () => {
+  const { album } = recordRun(emptyAlbum(), { f: '1'.repeat(15), j: '1'.repeat(15), x: '10' });
+  const data = readBackup(makeBackup({ ...progress(), album }));
+  assert.deepEqual(data.album.caught, ['f', 'j']); assert.equal(data.album.letters.x.recent, '10');
+  assert.match(describeBackup(data), /5 estrellas y 2 peces/);
+  assert.deepEqual(readBackup(makeBackup(progress())).album, emptyAlbum());
+});

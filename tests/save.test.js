@@ -51,3 +51,11 @@ test('the album travels in backups; older codes without one restore an empty alb
   assert.match(describeBackup(data), /5 estrellas y 2 peces/);
   assert.deepEqual(readBackup(makeBackup(progress())).album, emptyAlbum());
 });
+
+import { applyRun, emptyMissions } from '../missions.js';
+test('missions, streak and medals travel in backups', () => {
+  const { store } = applyRun(emptyMissions(), { world: 'centro', words: 3, won: false, collisions: 0, accuracy: 90, bestStreak: 3, frenzy: 0, whales: 0, golden: 0, letters: 9, top: 0, bottom: 0 }, {}, '2026-10-20');
+  const data = readBackup(makeBackup({ ...progress(), missions: store }));
+  assert.deepEqual(data.missions.medals, ['first']); assert.equal(data.missions.stats.runs, 1); assert.equal(data.missions.day, '2026-10-20');
+  assert.deepEqual(readBackup(makeBackup(progress())).missions, emptyMissions());
+});

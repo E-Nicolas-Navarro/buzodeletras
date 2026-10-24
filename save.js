@@ -4,6 +4,7 @@
 import { sanitizeWallet } from './skins.js';
 import { LEVELS } from './engine.js';
 import { sanitizeAlbum } from './album.js';
+import { sanitizeMissions } from './missions.js';
 const PREFIX = 'BUZO1';
 const SALT = 'buzo-de-letras';
 export const BACKUP_VERSION = 1;
@@ -42,8 +43,8 @@ export function sanitizeRecords(raw) {
   return records;
 }
 // The album was added later: older codes without it restore an empty album.
-export function makeBackup({ wallet, stars, records, sound, album }, now = Date.now()) {
-  const data = { v: BACKUP_VERSION, at: now, wallet: sanitizeWallet(wallet), stars: sanitizeStars(stars), records: sanitizeRecords(records), sound: sound !== false, album: sanitizeAlbum(album) };
+export function makeBackup({ wallet, stars, records, sound, album, missions }, now = Date.now()) {
+  const data = { v: BACKUP_VERSION, at: now, wallet: sanitizeWallet(wallet), stars: sanitizeStars(stars), records: sanitizeRecords(records), sound: sound !== false, album: sanitizeAlbum(album), missions: sanitizeMissions(missions) };
   const payload = toBase64Url(JSON.stringify(data));
   return `${PREFIX}-${payload}-${checksum(payload)}`;
 }
@@ -54,7 +55,7 @@ export function readBackup(text) {
     if (!match || checksum(match[1]) !== match[2]) return null;
     const data = JSON.parse(fromBase64Url(match[1]));
     if (!data || data.v !== BACKUP_VERSION) return null;
-    return { at: count(data.at, 8.64e15), wallet: sanitizeWallet(data.wallet), stars: sanitizeStars(data.stars), records: sanitizeRecords(data.records), sound: data.sound !== false, album: sanitizeAlbum(data.album) };
+    return { at: count(data.at, 8.64e15), wallet: sanitizeWallet(data.wallet), stars: sanitizeStars(data.stars), records: sanitizeRecords(data.records), sound: data.sound !== false, album: sanitizeAlbum(data.album), missions: sanitizeMissions(data.missions) };
   } catch { return null; }
 }
 export function describeBackup(data) {

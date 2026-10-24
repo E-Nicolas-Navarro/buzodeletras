@@ -5,6 +5,7 @@ import { makeBackup, readBackup, describeBackup, needsBackup, backupAge, sanitiz
 import { loadPeer, hostRoom, joinRoom, normalizeCode, inviteLink, codeFromLink, EMOTES } from './net.js';
 import { currentEvent, eventWords } from './events.js';
 import { createHands, stepHands, drawHands, COLORS } from './hands.js';
+import { dayKey, summarizeRun, dailyMissions, applyRun, forDay, liveStreak, sanitizeMissions, MEDALS, medalDone, DAILY_BONUS } from './missions.js';
 import { ALBUM_ROWS, LETTERS, RESCUE, ALBUM_PRIZE, sanitizeAlbum, recordRun, albumRewards, weakLetters, lettersIn, accuracyOf, progressOf } from './album.js';
 const $ = id => document.getElementById(id);
 const canvas = $('scene'), ctx = canvas.getContext('2d');
@@ -29,6 +30,9 @@ let wallet = sanitizeWallet(null);
 try { wallet = sanitizeWallet(JSON.parse(localStorage.getItem('buzo-wallet-v1') || 'null')); } catch { /* Persistence is optional. */ }
 let album = sanitizeAlbum(null);
 try { album = sanitizeAlbum(JSON.parse(localStorage.getItem('buzo-album-v1') || 'null')); } catch { /* Persistence is optional. */ }
+let missions = sanitizeMissions(null);
+try { missions = sanitizeMissions(JSON.parse(localStorage.getItem('buzo-missions-v1') || 'null')); } catch { /* Persistence is optional. */ }
+function saveMissions() { try { localStorage.setItem('buzo-missions-v1', JSON.stringify(missions)); } catch { /* Optional in private browsing. */ } }
 function saveAlbum() { try { localStorage.setItem('buzo-album-v1', JSON.stringify(album)); } catch { /* Optional in private browsing. */ } }
 function saveWallet() {
   try { localStorage.setItem('buzo-wallet-v1', JSON.stringify(wallet)); } catch { /* Optional in private browsing. */ }
@@ -41,7 +45,7 @@ const capital = text => text.charAt(0).toUpperCase() + text.slice(1);
 // Modes where the typing box is live.
 const typingMode = () => ['playing', 'boss', 'frenzy'].includes(state.mode);
 const inFrenzy = () => state.mode === 'frenzy' || state.mode === 'paused' && pausedMode === 'frenzy';
-const modalOpen = () => $('help').open || $('shop').open || $('coop').open || $('progress').open || $('album').open;
+const modalOpen = () => $('help').open || $('shop').open || $('coop').open || $('progress').open || $('album').open || $('missions').open;
 // ----- Two-player room: shared oxygen, words and boss, one device each -----
 let room = null, linked = false, partner = null, coopNote = '', syncClock = 0, waitingPartner = false;
 // Oxygen is decided by the host. The guest numbers its own changes and keeps the ones
@@ -380,7 +384,7 @@ function showRewards(rewards) {
     if (candy) div.append(amount(candy, 'candy'));
     div.style.animationDelay = `${box.children.length * .18}s`; box.append(div);
   };
-  for (const item of rewards.items) if (item.coins || item.gems || item.candy) row(item.label, item.coins, item.gems, item.candy, /tibur|ballena|dorado|frenes|pez|peces|álbum/i.test(item.label) ? 'bonus' : '');
+  for (const item of rewards.items) if (item.coins || item.gems || item.candy) row(item.label, item.coins, item.gems, item.candy, /tibur|ballena|dorado|frenes|pez|peces|álbum|misi|medalla|racha/i.test(item.label) ? 'bonus' : '');
   row('Total ganado', rewards.coins, rewards.gems, rewards.candy, 'reward-total');
   for (const id of ['walletCoinsWrap', 'walletGems']) { const chip = $(id); chip.classList.remove('bump'); void chip.offsetWidth; chip.classList.add('bump'); }
 }
@@ -407,19 +411,24 @@ function finish() {
     records[key] = { points: state.points, depth: state.depth, accuracy: acc };
     try { localStorage.setItem('buzo-records-v4', JSON.stringify(records)); } catch { /* Optional in private browsing. */ }
   }
-  if (!state.rewarded) {
-    state.rewarded = computeRewards(state);
-    // Every letter typed in this dive feeds the album; new fish and full rows add their prizes.
-    const news = recordRun(album, state.letters); album = news.album; saveAlbum();
-    for (const item of albumRewards(news)) {
-      state.rewarded.items.push(item); state.rewarded.coins += item.coins; state.rewarded.gems += item.gems;
-    }
-    wallet.coins += state.rewarded.coins; wallet.gems += state.rewarded.gems; wallet.candy += state.rewarded.candy; saveWallet(); void protectStorage();
-  }
+  // Stars first: medals such as «Explorador» look at them.
   const earned = starsFor(state);
   if (earned > (Number(stars[LEVELS[state.level].id]) || 0)) {
     stars[LEVELS[state.level].id] = earned;
     try { localStorage.setItem('buzo-stars-v1', JSON.stringify(stars)); } catch { /* Optional in private browsing. */ }
+  }
+  if (!state.rewarded) {
+    state.rewarded = computeRewards(state);
+    // Every letter typed in this dive feeds the album; new fish and full rows add their prizes.
+    const news = recordRun(album, state.letters); album = news.album; saveAlbum();
+    // Then the day's missions, the streak and the medals.
+    const day = applyRun(missions, summarizeRun(state), { fish: album.caught.length, stars, owned: wallet.owned.length - 1 });
+    missions = day.store; saveMissions();
+    for (const item of [...albumRewards(news), ...day.items]) {
+      state.rewarded.items.push(item); state.rewarded.coins += item.coins; state.rewarded.gems += item.gems;
+    }
+    wallet.coins += state.rewarded.coins; wallet.gems += state.rewarded.gems; wallet.candy += state.rewarded.candy; saveWallet(); void protectStorage();
+    renderMissionLine();
   }
   $('resultStars').hidden = !earned; $('resultStars').textContent = starText(earned);
   $('resultStars').setAttribute('aria-label', `${earned} de 3 estrellas`);
@@ -628,7 +637,7 @@ async function protectStorage() {
   try { if (navigator.storage?.persist) return await navigator.storage.persist(); } catch { /* Optional. */ }
   return false;
 }
-const snapshot = () => ({ wallet, stars, records, sound, album });
+const snapshot = () => ({ wallet, stars, records, sound, album, missions });
 function markBackup() {
   lastBackup = Date.now();
   try { localStorage.setItem('buzo-backup-v1', JSON.stringify({ at: lastBackup })); } catch { /* Optional. */ }
@@ -666,7 +675,7 @@ function checkRestore() {
 }
 function applyRestore() {
   if (!pendingRestore) return;
-  ({ wallet, stars, records, sound, album } = { ...pendingRestore }); saveAlbum();
+  ({ wallet, stars, records, sound, album, missions } = { ...pendingRestore }); saveAlbum(); saveMissions(); renderMissionLine();
   try {
     localStorage.setItem('buzo-records-v4', JSON.stringify(records)); localStorage.setItem('buzo-stars-v1', JSON.stringify(stars));
     localStorage.setItem('buzo-sound-v1', sound ? 'on' : 'off');
@@ -721,6 +730,54 @@ function openAlbum() { pause(); renderAlbum(); $('album').showModal(); }
 $('albumButton').onclick = $('resultAlbumButton').onclick = openAlbum;
 $('closeAlbum').onclick = () => $('album').close();
 $('album').addEventListener('close', () => { if (state.mode === 'paused') $('resumeButton').focus(); });
+// ----- Daily missions, streak and medals -----
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+function renderMissionLine() {
+  const today = forDay(missions), done = today.done.length, total = dailyMissions(today.day).length, streak = liveStreak(missions, today.day);
+  $('missionsButton').textContent = `Misiones ${done}/${total}`;
+  $('missionsButton').classList.toggle('needs-backup', done < total);
+  $('missionLine').textContent = `Misiones de hoy: ${done} de ${total}${streak ? ` · 🔥 racha de ${plural(streak, 'día', 'días')}` : ''}`;
+}
+function meter(value, goal) {
+  const bar = document.createElement('span'); bar.className = 'fish-meter';
+  const fill = document.createElement('i'); fill.style.width = `${Math.round(Math.min(1, value / goal) * 100)}%`; bar.append(fill);
+  return bar;
+}
+function renderMissions() {
+  const today = forDay(missions), list = dailyMissions(today.day), streak = liveStreak(missions, today.day);
+  $('missionList').replaceChildren();
+  for (const mission of list) {
+    const done = today.done.includes(mission.id), value = Math.min(mission.goal, today.progress[mission.id] || 0);
+    const card = document.createElement('div'); card.className = `mission-card ${done ? 'done' : ''}`;
+    const text = document.createElement('strong'); text.textContent = mission.text;
+    const status = document.createElement('small'); status.textContent = done ? '¡Cumplida!' : `${value} de ${mission.goal} · premio: ${mission.reward} monedas`;
+    card.append(text); card.append(meter(done ? 1 : value, done ? 1 : mission.goal)); card.append(status);
+    $('missionList').append(card);
+  }
+  $('missionBonus').textContent = today.bonus ? `¡Ganaste las ${DAILY_BONUS.gems} gemas de hoy por cumplir las tres!` : `Cumplí las tres y ganás ${DAILY_BONUS.gems} gemas más. Mañana hay misiones nuevas.`;
+  $('streakLine').textContent = streak ? `🔥 Racha de ${plural(streak, 'día', 'días')} seguidos. Cumplí al menos una misión por día para no perderla: a los 3 y a los 7 días ganás gemas.` : 'Cumplí al menos una misión hoy para empezar una racha 🔥. A los 3 y a los 7 días seguidos ganás gemas.';
+  const context = { stats: missions.stats, fish: album.caught.length, stars, owned: wallet.owned.length - 1, streak };
+  $('medalCount').textContent = `${missions.medals.length} de ${MEDALS.length}`;
+  $('medalGrid').replaceChildren();
+  for (const medal of MEDALS) {
+    const earned = missions.medals.includes(medal.id);
+    const card = document.createElement('div'); card.className = `medal-card ${earned ? 'earned' : ''}`;
+    const icon = document.createElement('span'); icon.className = 'medal-icon'; icon.textContent = medal.icon; icon.setAttribute('aria-hidden', 'true');
+    const name = document.createElement('strong'); name.textContent = medal.name;
+    const how = document.createElement('small'); how.textContent = medal.how;
+    const prize = document.createElement('small'); prize.className = 'medal-prize';
+    prize.textContent = earned ? '¡Ganada!' : `Premio: ${medal.coins} monedas${medal.gems ? ` y ${plural(medal.gems, 'gema', 'gemas')}` : ''}`;
+    card.append(icon); card.append(name); card.append(how);
+    if (!earned && medal.count) { const value = Math.min(medal.goal, medal.count(context)); card.append(meter(value, medal.goal)); how.textContent += ` (${value} de ${medal.goal})`; }
+    card.append(prize);
+    card.setAttribute('aria-label', `${medal.name}: ${earned ? 'ganada' : medal.how}`);
+    $('medalGrid').append(card);
+  }
+}
+function openMissions() { pause(); renderMissions(); $('missions').showModal(); }
+$('missionsButton').onclick = openMissions;
+$('closeMissions').onclick = () => $('missions').close();
+$('missions').addEventListener('close', () => { if (state.mode === 'paused') $('resumeButton').focus(); });
 function openShop() { pause(); $('shopMessage').textContent = ''; renderShop(); $('shop').showModal(); }
 $('shopButton').onclick = $('resultShopButton').onclick = openShop;
 $('closeShop').onclick = () => $('shop').close();
@@ -1027,4 +1084,4 @@ function frame(now) {
   draw(); renderHands(dt); requestAnimationFrame(frame);
 }
 if (season) { $('eventBanner').hidden = false; $('eventBanner').textContent = `🎃 ${season.name} · ¡ganá caramelos!`; $('eventBanner').title = season.blurb; }
-showKeyboard(); showHands(); measureHands(); resize(); saveWallet(); showSound(); renderLobby(); showRecord(); hud(); requestAnimationFrame(frame);
+showKeyboard(); showHands(); measureHands(); renderMissionLine(); resize(); saveWallet(); showSound(); renderLobby(); showRecord(); hud(); requestAnimationFrame(frame);

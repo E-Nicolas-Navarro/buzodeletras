@@ -66,3 +66,10 @@ test('the aquarium and own words travel in backups', () => {
   assert.deepEqual(data.ownWords, { words: ['tomás', 'firulais'], on: false });
   assert.deepEqual(readBackup(makeBackup(progress())).ownWords, { words: [], on: true });
 });
+
+test('backups carry the latest dives of the history', () => {
+  const history = Array.from({ length: 80 }, (_, i) => ({ at: 1000 + i, world: 'centro', words: 5, letters: 30, attempts: 32, mistakes: 2, seconds: 60 }));
+  const data = readBackup(makeBackup({ ...progress(), history }));
+  assert.equal(data.history.length, 60); assert.equal(data.history[0].at, 1020);
+  assert.deepEqual(readBackup(makeBackup(progress())).history, []);
+});

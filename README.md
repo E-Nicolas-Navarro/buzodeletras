@@ -2,6 +2,11 @@
 
 Juego de mecanografía en español para chicos: escribí las palabras de los tiburones para que se alejen del buzo. El buzo salta al agua y se queda en el centro: llegan tiburones de ambos lados y cada palabra lo lleva más profundo. Tras completar 24 palabras llegás al naufragio a 240 metros: superá las ocho frases de Otto para abrir el tesoro. Al quedarse sin oxígeno termina la expedición. Sitio estático, sin cuentas ni anuncios. El modo solo no usa servicios externos; el modo de a dos usa PeerJS (ver más abajo).
 
+## Pantallas
+
+- **Inicio y resultados** son «menús»: la escena ocupa todo el alto disponible y el teclado guía se oculta hasta que empieza la inmersión, así nada necesita barras de desplazamiento internas. Los resultados muestran a la izquierda lo que pasó (estrellas, cifras y botones) y a la derecha «Lo que ganaste»; en el celular van en una columna y se recorren con el scroll de la página.
+- **Tienda, Acuario, Misiones, Mi progreso, Mis palabras, Ayuda, De a dos y Panel para adultos** se abren como pantallas completas con una barra superior (título y «← Volver»), en lugar de ventanas flotantes.
+
 ## Mundos y guardianes
 
 Cinco mundos en orden de aprendizaje. Cada uno termina en una batalla de ocho frases contra su guardián:
@@ -19,6 +24,25 @@ El progreso (estrellas y récords) se guarda por mundo (`centro`, `arriba`, `aba
 ### Álbum de letras
 
 Cada tecla de las tres filas es un **pez** (27 en total). Se rescata al escribir esa letra bien 15 veces mientras los últimos 20 intentos tengan al menos 85 % de aciertos. Cada pez nuevo da 20 monedas; cada fila completa, 3 gemas; el álbum completo, 10 gemas. El álbum detecta las letras que más cuestan (las de menor puntería reciente) y las muestra como «¡Practicala!»: en la próxima inmersión hasta la mitad del mazo son palabras con esas letras. Se guarda en este navegador (`buzo-album-v1`) y viaja en el código de respaldo; los códigos viejos sin álbum restauran uno vacío.
+
+### Código de familia (progreso en línea)
+
+En «Mi progreso», «Crear mi código de familia» guarda el progreso en internet bajo un código como `ORCA-4821-SOL` (palabra del mar, número, otra palabra): sin cuenta, email ni datos personales. En otro dispositivo, «Usar un código que ya tengo» lo carga (muestra antes qué se reemplaza). Desde ahí se guarda solo después de cada partida, compra o cambio, y al abrir el juego se trae lo más nuevo.
+
+- **Choques:** cada guardado indica sobre qué versión se hizo. Si otro dispositivo guardó en el medio, no se pisa nada: «Mi progreso» (con punto rojo) pregunta si usar lo guardado en internet o lo de este dispositivo.
+- **Servidor:** la función `api/progress.js` (Vercel Functions) guarda el mismo código de respaldo de `save.js` en Upstash Redis (`buzo:familia:<código>`, se renueva por 400 días con cada guardado), con un script Lua atómico y un límite de 40 pedidos por minuto por IP para que no se puedan probar códigos al azar. Producción usa sus propias claves; las previsualizaciones y las pruebas locales usan `buzo:<entorno>:familia:`.
+- **Local:** `vercel env pull` deja las credenciales en `.env.local` y `npm run dev` también sirve `/api/progress` (con las claves de desarrollo). Sin `.env.local` el juego funciona igual; solo el código de familia avisa que no está disponible.
+
+### Panel para adultos
+
+El enlace «Panel para adultos» del pie de página abre un resumen pensado para padres y docentes (no aparece en el menú del chico):
+
+- **Esta semana contra la anterior:** minutos de práctica, velocidad (letras correctas por minuto de escritura, sin contar la bajada ni el frenesí), precisión y días con práctica.
+- **Últimas 20 inmersiones:** dos gráficos chicos (velocidad y precisión, cada uno con su propio eje), con una línea vertical que sigue al puntero o a las flechas del teclado y un cuadro con el valor. Hay una vista de tabla con todas las cifras.
+- **Errores por tecla:** el teclado coloreado según los últimos 20 intentos de cada letra (un solo tono, más oscuro = más errores).
+- **Precisión por dedo** y **consejos** que salen de esos números.
+
+La historia de partidas se guarda en `buzo-history-v1` (hasta 200 inmersiones; el código de respaldo lleva las últimas 60). Nada sale del navegador.
 
 ### Mis palabras
 
@@ -160,6 +184,10 @@ Para ver los quince casos por separado con Node reciente: `node --test --test-is
 | `engine.js` | Reglas deterministas: tiburones, oleadas, objetivos, oxígeno, puntos y profundidad |
 | `game.js` | Control de partida, composición de escena, sonidos y récords locales |
 | `hands.js` | Manos fantasma sobre el teclado de referencia |
+| `familycode.js` | Formato y validación de los códigos de familia (compartido por la página y la función) |
+| `cloud.js` | Lado de la página del código de familia: pedidos a `/api/progress` y estado de sincronización |
+| `api/progress.js` | Función de Vercel: guarda y lee el progreso en Upstash Redis |
+| `report.js` | Historia de partidas y cifras del panel para adultos |
 | `words.js` | Palabras propias del jugador: validación y guardado |
 | `aquarium.js` | Decoraciones del acuario: catálogo, compra y ubicación |
 | `missions.js` | Misiones del día, racha de días y medallas |

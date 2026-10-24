@@ -1,1 +1,1 @@
-{"name":"buzo-de-letras","version":"1.0.0","private":true,"type":"module","scripts":{"dev":"node server.mjs","start":"node server.mjs","build":"node build.mjs","test":"node --test"}}
+{"name":"buzo-de-letras","version":"1.0.0","private":true,"type":"module","scripts":{"dev":"node server.mjs","start":"node server.mjs","build":"node build.mjs","test":"node --test"},"dependencies":{"@upstash/ratelimit":"^2.2.0","@upstash/redis":"^1.39.0"}}

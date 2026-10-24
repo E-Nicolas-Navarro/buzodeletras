@@ -8,6 +8,9 @@ import { createHands, stepHands, drawHands, COLORS } from './hands.js';
 import { dayKey, summarizeRun, dailyMissions, applyRun, forDay, liveStreak, sanitizeMissions, MEDALS, medalDone, DAILY_BONUS } from './missions.js';
 import { DECOR, sanitizeAquarium, buyDecor, toggleDecor, shownDecor, canBuyDecor } from './aquarium.js';
 import { checkWord, sanitizeOwnWords, OWN_WORDS } from './words.js';
+import { emptyCloud, sanitizeCloud, createFamily, readFamily, saveFamily, savedAgo } from './cloud.js';
+import { normalizeFamilyCode } from './familycode.js';
+import { runEntry, sanitizeHistory, addRun, speedOf, precisionOf, weekStats, trend, keyStats, fingerStats, tips, worldName } from './report.js';
 import { ALBUM_ROWS, LETTERS, RESCUE, ALBUM_PRIZE, sanitizeAlbum, recordRun, albumRewards, weakLetters, lettersIn, accuracyOf, progressOf } from './album.js';
 const $ = id => document.getElementById(id);
 const canvas = $('scene'), ctx = canvas.getContext('2d');
@@ -39,20 +42,28 @@ let aquarium = sanitizeAquarium(null), ownWords = sanitizeOwnWords(null);
 try { aquarium = sanitizeAquarium(JSON.parse(localStorage.getItem('buzo-aquarium-v1') || 'null')); } catch { /* Persistence is optional. */ }
 try { ownWords = sanitizeOwnWords(JSON.parse(localStorage.getItem('buzo-words-v1') || 'null')); } catch { /* Persistence is optional. */ }
 function saveAquarium() { try { localStorage.setItem('buzo-aquarium-v1', JSON.stringify(aquarium)); } catch { /* Optional in private browsing. */ } }
-function saveOwnWords() { try { localStorage.setItem('buzo-words-v1', JSON.stringify(ownWords)); } catch { /* Optional in private browsing. */ } }
+function saveOwnWords() { try { localStorage.setItem('buzo-words-v1', JSON.stringify(ownWords)); } catch { /* Optional in private browsing. */ } queueCloud(); }
+// Family code: which code this device syncs with, and whether it has changes not saved online yet.
+let cloud = emptyCloud();
+try { cloud = sanitizeCloud(JSON.parse(localStorage.getItem('buzo-cloud-v1') || 'null')); } catch { /* Persistence is optional. */ }
+function saveCloud() { try { localStorage.setItem('buzo-cloud-v1', JSON.stringify(cloud)); } catch { /* Optional in private browsing. */ } }
+let history = [];
+try { history = sanitizeHistory(JSON.parse(localStorage.getItem('buzo-history-v1') || '[]')); } catch { /* Persistence is optional. */ }
+function saveHistory() { try { localStorage.setItem('buzo-history-v1', JSON.stringify(history)); } catch { /* Optional in private browsing. */ } }
 function saveAlbum() { try { localStorage.setItem('buzo-album-v1', JSON.stringify(album)); } catch { /* Optional in private browsing. */ } }
 function saveWallet() {
   try { localStorage.setItem('buzo-wallet-v1', JSON.stringify(wallet)); } catch { /* Optional in private browsing. */ }
   $('walletCoins').textContent = wallet.coins; $('walletGems').textContent = wallet.gems; $('walletCandy').textContent = wallet.candy;
   $('walletCandyWrap').hidden = !season && !wallet.candy;
-  $('progressButton').classList.toggle('needs-backup', needsBackup(wallet, lastBackup));
+  // A device that saves online with a family code needs no manual backup.
+  $('progressButton').classList.toggle('needs-backup', cloud.code ? Boolean(cloudConflict) || cloud.dirty && !navigator.onLine : needsBackup(wallet, lastBackup));
 }
 const boss = () => bossOf(state.level);
 const capital = text => text.charAt(0).toUpperCase() + text.slice(1);
 // Modes where the typing box is live.
 const typingMode = () => ['playing', 'boss', 'frenzy'].includes(state.mode);
 const inFrenzy = () => state.mode === 'frenzy' || state.mode === 'paused' && pausedMode === 'frenzy';
-const modalOpen = () => $('help').open || $('shop').open || $('coop').open || $('progress').open || $('album').open || $('missions').open || $('words').open;
+const modalOpen = () => $('help').open || $('shop').open || $('coop').open || $('progress').open || $('album').open || $('missions').open || $('words').open || $('parent').open;
 // ----- Two-player room: shared oxygen, words and boss, one device each -----
 let room = null, linked = false, partner = null, coopNote = '', syncClock = 0, waitingPartner = false;
 // Oxygen is decided by the host. The guest numbers its own changes and keeps the ones
@@ -431,6 +442,8 @@ function finish() {
     // Then the day's missions, the streak and the medals.
     const day = applyRun(missions, summarizeRun(state), { fish: album.caught.length, stars, owned: wallet.owned.length - 1 });
     missions = day.store; saveMissions();
+    history = addRun(history, runEntry(state)); saveHistory();
+    queueCloud();
     for (const item of [...albumRewards(news), ...day.items]) {
       state.rewarded.items.push(item); state.rewarded.coins += item.coins; state.rewarded.gems += item.gems;
     }
@@ -589,7 +602,7 @@ function shopCard(item, kind) {
     }
   }
   const button = document.createElement('button');
-  const done = text => { saveWallet(); renderShop(); $('shopMessage').textContent = text; };
+  const done = text => { saveWallet(); queueCloud(); renderShop(); $('shopMessage').textContent = text; };
   if (owned) {
     if (isSkin) {
       button.textContent = equipped ? 'Equipado' : 'Equipar'; button.disabled = equipped;
@@ -644,7 +657,7 @@ async function protectStorage() {
   try { if (navigator.storage?.persist) return await navigator.storage.persist(); } catch { /* Optional. */ }
   return false;
 }
-const snapshot = () => ({ wallet, stars, records, sound, album, missions, aquarium, ownWords });
+const snapshot = () => ({ wallet, stars, records, sound, album, missions, aquarium, ownWords, history });
 function markBackup() {
   lastBackup = Date.now();
   try { localStorage.setItem('buzo-backup-v1', JSON.stringify({ at: lastBackup })); } catch { /* Optional. */ }
@@ -653,7 +666,7 @@ function markBackup() {
 function progressMessage(text, error = false) { $('progressMessage').textContent = text; $('progressMessage').classList.toggle('error', error); }
 let pendingRestore = null;
 async function openProgress() {
-  pause(); pendingRestore = null; progressMessage(''); $('confirmRestore').hidden = true; $('restoreInput').value = '';
+  pause(); pendingRestore = null; pendingFamily = null; cloudNote = ''; renderCloud(); progressMessage(''); $('confirmRestore').hidden = true; $('restoreInput').value = '';
   $('backupCode').value = makeBackup(snapshot());
   $('progressStatus').textContent = `Tu progreso se guarda en este navegador (${backupAge(lastBackup)}).`;
   $('storageStatus').textContent = '';
@@ -680,17 +693,106 @@ function checkRestore() {
   pendingRestore = data; $('confirmRestore').hidden = false;
   progressMessage(`Código válido: ${describeBackup(data)}. Reemplazaría lo que tenés ahora (${describeBackup(snapshot())}).`);
 }
-function applyRestore() {
-  if (!pendingRestore) return;
-  ({ wallet, stars, records, sound, album, missions, aquarium, ownWords } = { ...pendingRestore });
-  saveAlbum(); saveMissions(); saveAquarium(); saveOwnWords(); renderMissionLine(); renderWords();
+// Replaces everything on this device with a checked backup (a pasted code, a file or the family code).
+function applyProgress(data) {
+  ({ wallet, stars, records, sound, album, missions, aquarium, ownWords, history } = { ...data });
+  saveAlbum(); saveMissions(); saveAquarium(); saveOwnWords(); saveHistory(); saveWallet(); renderMissionLine(); renderWords();
   try {
     localStorage.setItem('buzo-records-v4', JSON.stringify(records)); localStorage.setItem('buzo-stars-v1', JSON.stringify(stars));
     localStorage.setItem('buzo-sound-v1', sound ? 'on' : 'off');
   } catch { /* Optional in private browsing. */ }
-  pendingRestore = null; $('confirmRestore').hidden = true;
-  markBackup(); showSound(); renderLevels(); showRecord(); hud(); progressMessage('¡Progreso recuperado!');
+  showSound(); renderLevels(); showRecord(); hud();
 }
+function applyRestore() {
+  if (!pendingRestore) return;
+  applyProgress(pendingRestore); queueCloud();
+  pendingRestore = null; $('confirmRestore').hidden = true;
+  markBackup(); progressMessage('¡Progreso recuperado!');
+}
+// ----- Family code: the progress kept online -----
+let cloudTimer = null, cloudBusy = false, cloudConflict = null, pendingFamily = null, cloudNote = '', cloudError = false;
+function cloudMessage(text, error = false) { cloudNote = text; cloudError = error; renderCloud(); }
+// After each change, save online a moment later (one save for a burst of changes).
+function queueCloud() {
+  if (!cloud.code) return;
+  cloud.dirty = true; saveCloud(); clearTimeout(cloudTimer); cloudTimer = setTimeout(pushCloud, 1500); renderCloud();
+}
+async function pushCloud() {
+  if (!cloud.code || cloudBusy || cloudConflict) return;
+  cloudBusy = true; renderCloud();
+  try {
+    const out = await saveFamily(fetch, cloud.code, makeBackup(snapshot()), cloud.at);
+    if (out.status === 200) { cloud.at = out.at; cloud.dirty = false; cloudNote = ''; }
+    else if (out.status === 409) { cloudConflict = out.at; toast('Otro dispositivo guardó progreso: elegí cuál conservar en «Mi progreso»', 'miss'); }
+    else cloudMessage(out.status === 404 ? 'Ese código ya no existe en internet. Podés crear uno nuevo.' : out.error || 'No pudimos guardar. Probamos de nuevo más tarde.', true);
+  } catch { cloudMessage('Sin conexión: se guarda cuando vuelva internet.', true); }
+  cloudBusy = false; saveCloud(); saveWallet(); renderCloud();
+}
+// When the game opens (or comes back to the front): newer progress from another device replaces
+// this one if nothing here is unsaved; otherwise the player chooses.
+async function checkCloud() {
+  if (!cloud.code || cloudBusy || !['welcome', 'results'].includes(state.mode)) return;
+  try {
+    const meta = await readFamily(fetch, cloud.code, true);
+    if (meta.status !== 200 || meta.at <= cloud.at) { if (cloud.dirty) pushCloud(); return; }
+    if (cloud.dirty) { cloudConflict = meta.at; renderCloud(); saveWallet(); toast('Otro dispositivo guardó progreso: elegí cuál conservar en «Mi progreso»', 'miss'); return; }
+    const full = await readFamily(fetch, cloud.code), data = full.status === 200 && readBackup(full.data);
+    if (data) { applyProgress(data); cloud.at = full.at; saveCloud(); toast('¡Progreso actualizado con tu código de familia!'); }
+  } catch { /* Offline: try again next time. */ }
+}
+function renderCloud() {
+  const linked = Boolean(cloud.code);
+  $('cloudText').textContent = linked
+    ? 'Anotá este código: con él seguís jugando en otra compu, tablet o celular. Tu progreso se guarda solo después de cada partida.'
+    : 'Con un código de familia tu progreso se guarda en internet y lo podés seguir en otra compu, tablet o celular. No hace falta email ni contraseña, y no se guarda ningún dato personal.';
+  $('cloudCodeRow').hidden = !linked; $('cloudCode').textContent = cloud.code || '';
+  $('cloudStart').hidden = linked; $('cloudJoin').hidden = linked; $('cloudForget').hidden = !linked;
+  $('cloudConflict').hidden = !cloudConflict; $('cloudConfirm').hidden = !pendingFamily;
+  const status = !linked ? cloudNote : cloudBusy ? 'Guardando…' : cloudNote || (cloud.dirty ? 'Hay cambios por guardar…' : `Guardado ${savedAgo(cloud.at || Date.now())}.`);
+  $('cloudStatus').textContent = status; $('cloudStatus').classList.toggle('error', cloudError && Boolean(cloudNote));
+}
+$('cloudCreate').onclick = async () => {
+  cloudMessage('Creando tu código…');
+  try {
+    const out = await createFamily(fetch, makeBackup(snapshot()));
+    if (out.status !== 201) { cloudMessage(out.error || 'No pudimos crear el código. Probá de nuevo.', true); return; }
+    cloud = { code: out.code, at: out.at, dirty: false }; saveCloud(); saveWallet();
+    cloudMessage(''); beep('prize');
+  } catch { cloudMessage('Sin conexión. Probá de nuevo cuando tengas internet.', true); }
+};
+$('copyCloud').onclick = async () => {
+  try { await navigator.clipboard.writeText(cloud.code); cloudMessage('¡Código copiado! Guardalo en un lugar seguro.'); }
+  catch { cloudMessage('Copialo a mano: ' + cloud.code); }
+};
+$('cloudJoin').onsubmit = async event => {
+  event.preventDefault();
+  const code = normalizeFamilyCode($('cloudInput').value);
+  if (!code) { cloudMessage('Revisá el código: tiene la forma ORCA-4821-SOL.', true); return; }
+  cloudMessage('Buscando…');
+  try {
+    const out = await readFamily(fetch, code), data = out.status === 200 && readBackup(out.data);
+    if (!data) { cloudMessage(out.status === 404 ? 'No encontramos ese código. Revisá que esté bien escrito.' : out.error || 'Ese código no tiene un progreso válido.', true); return; }
+    pendingFamily = { code, at: out.at, data };
+    cloudMessage(`Encontramos: ${describeBackup(data)}. Reemplazaría lo de este dispositivo (${describeBackup(snapshot())}).`);
+  } catch { cloudMessage('Sin conexión. Probá de nuevo cuando tengas internet.', true); }
+};
+$('cloudConfirm').onclick = () => {
+  if (!pendingFamily) return;
+  applyProgress(pendingFamily.data); cloud = { code: pendingFamily.code, at: pendingFamily.at, dirty: false };
+  pendingFamily = null; saveCloud(); saveWallet(); $('cloudInput').value = ''; cloudMessage('¡Listo! Este dispositivo ya usa tu código de familia.');
+};
+$('cloudUseRemote').onclick = async () => {
+  try {
+    const out = await readFamily(fetch, cloud.code), data = out.status === 200 && readBackup(out.data);
+    if (!data) { cloudMessage('No pudimos traer el progreso. Probá de nuevo.', true); return; }
+    applyProgress(data); cloud = { ...cloud, at: out.at, dirty: false }; cloudConflict = null; saveCloud(); saveWallet(); cloudMessage('Usamos el progreso guardado en internet.');
+  } catch { cloudMessage('Sin conexión. Probá de nuevo cuando tengas internet.', true); }
+};
+// Keeping this device's progress: save it on top of the newer version.
+$('cloudUseLocal').onclick = () => { cloud.at = cloudConflict; cloudConflict = null; cloud.dirty = true; saveCloud(); pushCloud(); };
+$('cloudForget').onclick = () => { cloud = emptyCloud(); cloudConflict = null; pendingFamily = null; saveCloud(); saveWallet(); cloudMessage('Este dispositivo ya no usa el código. Tu progreso sigue acá.'); };
+window.addEventListener('online', () => { if (cloud.dirty) pushCloud(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkCloud(); });
 $('progressButton').onclick = openProgress; $('closeProgress').onclick = () => $('progress').close();
 $('progress').addEventListener('close', () => { if (state.mode === 'paused') $('resumeButton').focus(); });
 $('copyBackup').onclick = copyBackup; $('downloadBackup').onclick = downloadBackup;
@@ -741,7 +843,7 @@ function decorCard(item) {
   const button = document.createElement('button'); button.type = 'button';
   if (owned) {
     button.textContent = placed ? 'Sacar' : 'Poner';
-    button.onclick = () => { toggleDecor(aquarium, item.id); saveAquarium(); renderAlbum(); };
+    button.onclick = () => { toggleDecor(aquarium, item.id); saveAquarium(); queueCloud(); renderAlbum(); };
   } else {
     const ready = canBuyDecor(wallet, item);
     button.textContent = ready ? 'Comprar' : 'Te faltan monedas';
@@ -749,7 +851,7 @@ function decorCard(item) {
     button.disabled = !ready;
     button.onclick = () => {
       if (!buyDecor(aquarium, wallet, item.id)) return;
-      saveAquarium(); saveWallet(); beep('prize'); renderAlbum();
+      saveAquarium(); saveWallet(); queueCloud(); beep('prize'); renderAlbum();
       $('decorMessage').textContent = `¡${item.name} ya está en tu acuario!`;
     };
   }
@@ -850,6 +952,154 @@ function openMissions() { pause(); renderMissions(); $('missions').showModal(); 
 $('missionsButton').onclick = openMissions;
 $('closeMissions').onclick = () => $('missions').close();
 $('missions').addEventListener('close', () => { if (state.mode === 'paused') $('resumeButton').focus(); });
+// ----- Grown-ups' panel -----
+const SVG = 'http://www.w3.org/2000/svg';
+const HEAT = ['#6bbdb6', '#3fa29d', '#1d8584', '#0c686c', '#064d55'];
+const shortDate = at => new Date(at).toLocaleDateString('es', { day: 'numeric', month: 'short' });
+const longDate = at => new Date(at).toLocaleString('es', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+function svg(tag, attributes = {}, parent = null) {
+  const node = document.createElementNS(SVG, tag);
+  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
+  parent?.append(node); return node;
+}
+function showTip(lines, x, y) {
+  const tip = $('chartTip'); tip.replaceChildren();
+  lines.forEach((text, i) => { const row = document.createElement(i ? 'span' : 'strong'); row.textContent = text; tip.append(row); });
+  tip.hidden = false; tip.style.left = `${Math.min(x + 14, innerWidth - 190)}px`; tip.style.top = `${Math.max(8, y - 64)}px`;
+}
+const hideTip = () => { $('chartTip').hidden = true; };
+function niceTicks(lo, hi) { const step = Math.max(5, Math.ceil((hi - lo) / 4 / 5) * 5); const ticks = []; for (let v = lo; v <= hi; v += step) ticks.push(v); return ticks; }
+// One small line chart: a 2px line with a faint wash, an end dot with its value, hairline grid,
+// and a crosshair that snaps to the nearest dive (pointer or arrow keys).
+function lineChart(title, runs, read, unit, [lo, hi]) {
+  const card = document.createElement('figure'); card.className = 'chart-card';
+  const heading = document.createElement('h4'); heading.textContent = title; card.append(heading);
+  const points = runs.map(entry => ({ entry, value: read(entry) })).filter(point => point.value !== null);
+  if (points.length < 2) { const note = document.createElement('p'); note.textContent = 'Hacen falta al menos dos partidas para ver cómo cambia.'; card.append(note); return card; }
+  const W = 320, H = 150, left = 30, right = 40, top = 10, bottom = 22;
+  const x = i => left + (W - left - right) * (points.length === 1 ? 1 : i / (points.length - 1));
+  const y = v => top + (H - top - bottom) * (1 - (Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo));
+  const chart = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', tabindex: 0, 'aria-label': `${title}: ${points.length} partidas, la última ${points.at(-1).value} ${unit}. Usá las flechas para recorrerlas.` });
+  for (const tick of niceTicks(lo, hi)) {
+    svg('line', { x1: left, x2: W - right, y1: y(tick), y2: y(tick), stroke: '#d5e3df', 'stroke-width': 1 }, chart);
+    const label = svg('text', { x: left - 6, y: y(tick) + 3, 'text-anchor': 'end', 'font-size': 9, fill: '#5a7577' }, chart); label.textContent = tick;
+  }
+  const path = points.map((point, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(point.value).toFixed(1)}`).join(' ');
+  svg('path', { d: `${path} L${x(points.length - 1)},${y(lo)} L${x(0)},${y(lo)} Z`, fill: '#008fa31a' }, chart);
+  svg('path', { d: path, fill: 'none', stroke: '#008fa3', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, chart);
+  const last = points.at(-1);
+  svg('circle', { cx: x(points.length - 1), cy: y(last.value), r: 4, fill: '#008fa3', stroke: '#ffffff', 'stroke-width': 2 }, chart);
+  const end = svg('text', { x: x(points.length - 1) + 8, y: y(last.value) + 4, 'font-size': 11, 'font-weight': 'bold', fill: '#123d49' }, chart); end.textContent = `${last.value}`;
+  for (const [i, anchor] of [[0, 'start'], [points.length - 1, 'end']]) {
+    const date = svg('text', { x: x(i), y: H - 6, 'text-anchor': anchor, 'font-size': 9, fill: '#5a7577' }, chart); date.textContent = shortDate(points[i].entry.at);
+  }
+  const cross = svg('line', { y1: top, y2: H - bottom, stroke: '#123d49', 'stroke-width': 1, visibility: 'hidden' }, chart);
+  const halo = svg('circle', { r: 5, fill: '#008fa3', stroke: '#ffffff', 'stroke-width': 2, visibility: 'hidden' }, chart);
+  let current = points.length - 1;
+  const show = (i, clientX, clientY) => {
+    current = Math.max(0, Math.min(points.length - 1, i));
+    const point = points[current];
+    for (const mark of [cross, halo]) mark.setAttribute('visibility', 'visible');
+    cross.setAttribute('x1', x(current)); cross.setAttribute('x2', x(current));
+    halo.setAttribute('cx', x(current)); halo.setAttribute('cy', y(point.value));
+    const box = chart.getBoundingClientRect?.() || { left: 0, top: 0, width: W };
+    showTip([`${point.value} ${unit}`, longDate(point.entry.at), `${worldName(point.entry.world)} · ${point.entry.relaxed ? 'práctica' : 'desafío'}`],
+      clientX ?? box.left + x(current) / W * box.width, clientY ?? box.top);
+  };
+  const hide = () => { for (const mark of [cross, halo]) mark.setAttribute('visibility', 'hidden'); hideTip(); };
+  chart.addEventListener('pointermove', event => {
+    const box = chart.getBoundingClientRect(), px = (event.clientX - box.left) / box.width * W;
+    show(Math.round((px - left) / (W - left - right) * (points.length - 1)), event.clientX, event.clientY);
+  });
+  chart.addEventListener('pointerleave', hide); chart.addEventListener('blur', hide);
+  chart.addEventListener('focus', () => show(current));
+  chart.addEventListener('keydown', event => {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); show(current + (event.key === 'ArrowLeft' ? -1 : 1)); }
+  });
+  card.append(chart); return card;
+}
+// A stat tile: label, the number (with its unit set smaller beside it) and the change.
+function kpi(label, value, unit, note) {
+  const tile = document.createElement('div'); tile.className = 'kpi';
+  const name = document.createElement('span'); name.textContent = label;
+  const number = document.createElement('strong'); number.textContent = value;
+  if (unit && value !== '—') { const small = document.createElement('em'); small.textContent = unit; number.append(small); }
+  const delta = document.createElement('small'); delta.textContent = note;
+  tile.append(name); tile.append(number); tile.append(delta);
+  return tile;
+}
+function change(now, before, unit) {
+  if (now === null) return 'sin partidas esta semana';
+  if (before === null || before === undefined) return 'sin datos de la semana anterior';
+  const diff = now - before;
+  return diff === 0 ? 'igual que la semana anterior' : `${diff > 0 ? '▲ +' : '▼ −'}${Math.abs(diff)}${unit} que la semana anterior`;
+}
+function renderParent() {
+  const week = weekStats(history), runs = trend(history), keys = keyStats(album), fingers = fingerStats(album);
+  $('parentIntro').textContent = history.length
+    ? `${history.length} ${history.length === 1 ? 'inmersión registrada' : 'inmersiones registradas'} en este dispositivo desde el ${shortDate(history[0].at)}. Nada sale de este navegador.`
+    : 'Todavía no hay partidas registradas. Después de cada inmersión vas a ver acá su velocidad, su precisión y las letras que más le cuestan. Nada sale de este navegador.';
+  $('parentKpis').replaceChildren(
+    kpi('Tiempo esta semana', `${week.now.minutes}`, 'min', change(week.now.dives ? week.now.minutes : null, week.before.dives ? week.before.minutes : null, ' min')),
+    kpi('Velocidad', week.now.speed === null ? '—' : `${week.now.speed}`, 'letras/min', change(week.now.speed, week.before.speed, '')),
+    kpi('Precisión', week.now.precision === null ? '—' : `${week.now.precision}`, '%', change(week.now.precision, week.before.precision, ' %')),
+    kpi('Días con práctica', `${week.now.days}`, 'de 7', `${week.now.dives} ${week.now.dives === 1 ? 'inmersión' : 'inmersiones'} en los últimos 7 días`));
+  const speeds = runs.map(speedOf), precisions = runs.map(precisionOf).filter(value => value !== null);
+  const top = Math.max(40, Math.ceil(Math.max(0, ...speeds) / 20) * 20), floor = Math.min(60, Math.floor(Math.min(100, ...precisions) / 10) * 10);
+  $('parentCharts').replaceChildren(lineChart('Velocidad (letras por minuto)', runs, speedOf, 'letras/min', [0, top]), lineChart('Precisión (%)', runs, precisionOf, '%', [floor, 100]));
+  // The table view: every number of the charts, newest first.
+  const table = document.createElement('table'), head = document.createElement('tr');
+  for (const name of ['Fecha', 'Mundo', 'Palabras', 'Letras/min', 'Precisión', 'Minutos']) { const th = document.createElement('th'); th.textContent = name; head.append(th); }
+  table.append(head);
+  for (const entry of [...history].reverse().slice(0, 40)) {
+    const row = document.createElement('tr');
+    for (const value of [longDate(entry.at), `${worldName(entry.world)}${entry.relaxed ? ' (práctica)' : ''}`, entry.words, speedOf(entry) ?? '—', precisionOf(entry) === null ? '—' : `${precisionOf(entry)} %`, (entry.seconds / 60).toFixed(1)]) {
+      const td = document.createElement('td'); td.textContent = value; row.append(td);
+    }
+    table.append(row);
+  }
+  $('parentTable').replaceChildren(table);
+  $('parentKeys').replaceChildren();
+  for (const row of ALBUM_ROWS) {
+    const line = document.createElement('div'); line.className = 'key-map-row';
+    for (const letter of row.letters) {
+      const stat = keys[letter], cell = document.createElement('span');
+      cell.className = `heat-key ${stat.bin === null ? 'no-data' : stat.bin >= 2 ? 'dark' : ''}`;
+      if (stat.bin !== null) cell.style.background = HEAT[stat.bin];
+      cell.textContent = letter.toUpperCase(); cell.tabIndex = 0;
+      const lines = stat.bin === null ? [letter.toUpperCase(), stat.tries ? `solo ${stat.tries} intentos: faltan datos` : 'todavía sin intentos'] : [`${letter.toUpperCase()}: ${stat.precision} % bien`, `${100 - stat.precision} % de errores en ${stat.tries} intentos`];
+      cell.setAttribute('aria-label', lines.join(', '));
+      const tip = () => { const box = cell.getBoundingClientRect(); showTip(lines, box.right, box.top); };
+      cell.addEventListener('pointerenter', tip); cell.addEventListener('focus', tip);
+      cell.addEventListener('pointerleave', hideTip); cell.addEventListener('blur', hideTip);
+      line.append(cell);
+    }
+    $('parentKeys').append(line);
+  }
+  const ranges = ['menos de 5 %', '5 a 10 %', '10 a 20 %', '20 a 35 %', '35 % o más'];
+  $('parentKeyLegend').replaceChildren(...[...ranges.map((text, i) => [HEAT[i], text]), ['#e3ebe8', 'sin datos']].map(([color, text]) => {
+    const item = document.createElement('span'), swatch = document.createElement('i'); swatch.style.background = color; item.append(swatch); item.append(document.createTextNode(text)); return item;
+  }));
+  $('parentFingers').replaceChildren(...fingers.map(finger => {
+    const row = document.createElement('div'); row.className = 'finger-row';
+    const name = document.createElement('span'); name.textContent = `${finger.name[0].toUpperCase()}${finger.name.slice(1)}`;
+    const track = document.createElement('div'); track.className = 'finger-track';
+    const value = document.createElement('small');
+    if (finger.precision === null) { value.className = 'none'; value.textContent = 'sin datos'; }
+    else { const bar = document.createElement('i'); bar.style.width = `${Math.max(2, finger.precision * .8)}%`; track.append(bar); value.textContent = `${finger.precision} %`; }
+    track.append(value);
+    row.setAttribute('aria-label', `${finger.name}: ${finger.precision === null ? 'sin datos' : `${finger.precision} % bien`} (teclas ${finger.letters.join(' ').toUpperCase()})`);
+    row.append(name); row.append(track); return row;
+  }));
+  $('parentTips').replaceChildren(...tips({ week, weak: weakLetters(album), fingers }).map(text => { const item = document.createElement('li'); item.textContent = text; return item; }));
+}
+$('parentButton').onclick = () => { pause(); renderParent(); $('parent').showModal(); };
+$('closeParent').onclick = () => $('parent').close();
+$('parent').addEventListener('close', () => { hideTip(); if (state.mode === 'paused') $('resumeButton').focus(); });
+$('parentTableToggle').onclick = () => {
+  const open = $('parentTable').hidden; $('parentTable').hidden = !open;
+  $('parentTableToggle').setAttribute('aria-expanded', String(open)); $('parentTableToggle').textContent = open ? 'Ocultar tabla' : 'Ver como tabla';
+};
 function openShop() { pause(); $('shopMessage').textContent = ''; renderShop(); $('shop').showModal(); }
 $('shopButton').onclick = $('resultShopButton').onclick = openShop;
 $('closeShop').onclick = () => $('shop').close();
@@ -1155,9 +1405,11 @@ function frame(now) {
   if (state.boss) updateBossHud();
   if (state.frenzy) updateFrenzyHud();
   if (state.mode === 'ended') { hud(); finish(); }
+  // Welcome and results are menus: the scene takes the whole space and the keyboard steps aside.
+  $('gameShell').classList.toggle('menu', ['welcome', 'results'].includes(state.mode));
   draw(); renderHands(dt);
   if ($('album').open) paintAquarium(now / 1000);
   requestAnimationFrame(frame);
 }
 if (season) { $('eventBanner').hidden = false; $('eventBanner').textContent = `🎃 ${season.name} · ¡ganá caramelos!`; $('eventBanner').title = season.blurb; }
-showKeyboard(); showHands(); measureHands(); renderMissionLine(); renderWords(); resize(); saveWallet(); showSound(); renderLobby(); showRecord(); hud(); requestAnimationFrame(frame);
+showKeyboard(); showHands(); measureHands(); renderMissionLine(); renderWords(); renderCloud(); void checkCloud(); resize(); saveWallet(); showSound(); renderLobby(); showRecord(); hud(); requestAnimationFrame(frame);

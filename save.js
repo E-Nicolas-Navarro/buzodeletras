@@ -7,6 +7,9 @@ import { sanitizeAlbum } from './album.js';
 import { sanitizeMissions } from './missions.js';
 import { sanitizeAquarium } from './aquarium.js';
 import { sanitizeOwnWords } from './words.js';
+import { sanitizeHistory } from './report.js';
+// Backups carry only the latest dives of the history, to keep the code short.
+const BACKUP_HISTORY = 60;
 const PREFIX = 'BUZO1';
 const SALT = 'buzo-de-letras';
 export const BACKUP_VERSION = 1;
@@ -45,8 +48,8 @@ export function sanitizeRecords(raw) {
   return records;
 }
 // The album was added later: older codes without it restore an empty album.
-export function makeBackup({ wallet, stars, records, sound, album, missions, aquarium, ownWords }, now = Date.now()) {
-  const data = { v: BACKUP_VERSION, at: now, wallet: sanitizeWallet(wallet), stars: sanitizeStars(stars), records: sanitizeRecords(records), sound: sound !== false, album: sanitizeAlbum(album), missions: sanitizeMissions(missions), aquarium: sanitizeAquarium(aquarium), ownWords: sanitizeOwnWords(ownWords) };
+export function makeBackup({ wallet, stars, records, sound, album, missions, aquarium, ownWords, history }, now = Date.now()) {
+  const data = { v: BACKUP_VERSION, at: now, wallet: sanitizeWallet(wallet), stars: sanitizeStars(stars), records: sanitizeRecords(records), sound: sound !== false, album: sanitizeAlbum(album), missions: sanitizeMissions(missions), aquarium: sanitizeAquarium(aquarium), ownWords: sanitizeOwnWords(ownWords), history: sanitizeHistory(history).slice(-BACKUP_HISTORY) };
   const payload = toBase64Url(JSON.stringify(data));
   return `${PREFIX}-${payload}-${checksum(payload)}`;
 }
@@ -57,7 +60,7 @@ export function readBackup(text) {
     if (!match || checksum(match[1]) !== match[2]) return null;
     const data = JSON.parse(fromBase64Url(match[1]));
     if (!data || data.v !== BACKUP_VERSION) return null;
-    return { at: count(data.at, 8.64e15), wallet: sanitizeWallet(data.wallet), stars: sanitizeStars(data.stars), records: sanitizeRecords(data.records), sound: data.sound !== false, album: sanitizeAlbum(data.album), missions: sanitizeMissions(data.missions), aquarium: sanitizeAquarium(data.aquarium), ownWords: sanitizeOwnWords(data.ownWords) };
+    return { at: count(data.at, 8.64e15), wallet: sanitizeWallet(data.wallet), stars: sanitizeStars(data.stars), records: sanitizeRecords(data.records), sound: data.sound !== false, album: sanitizeAlbum(data.album), missions: sanitizeMissions(data.missions), aquarium: sanitizeAquarium(data.aquarium), ownWords: sanitizeOwnWords(data.ownWords), history: sanitizeHistory(data.history) };
   } catch { return null; }
 }
 export function describeBackup(data) {

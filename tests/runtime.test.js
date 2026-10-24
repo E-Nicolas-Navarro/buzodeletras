@@ -14,7 +14,7 @@ class Element {
   get textContent() { return this.children.length ? this.children.map(child => child.textContent).join('') : this.text || ''; }
   set innerHTML(value) { this.textContent = value; }
   append(child) { this.children.push(child); }
-  replaceChildren() { this.children = []; this.text = ''; }
+  replaceChildren(...nodes) { this.children = [...nodes]; this.text = ''; }
   setAttribute(key, value) { this.attributes[key] = value; }
   addEventListener(type, callback) { (this.listeners[type] ||= []).push(callback); }
   dispatchEvent(event) { for (const callback of this.listeners[event.type] || []) callback({ target: this, ...event }); }
@@ -26,11 +26,12 @@ class Element {
 }
 let focused = '';
 for (const reducedMotion of [false, true]) test(`UI: full expedition, victory reveal, pause and restart (reduced motion: ${reducedMotion})`, async () => {
-  const ids = ['scene', 'level', 'relaxed', 'record', 'keyboard', 'fingerHint', 'wordDisplay', 'depth', 'score', 'air', 'typing', 'status', 'feedback', 'welcome', 'results', 'pauseOverlay', 'pauseButton', 'resultLabel', 'resultTitle', 'resultMessage', 'resultWords', 'resultAccuracy', 'resultSpeed', 'againButton', 'resumeButton', 'startButton', 'homeButton', 'exitButton', 'soundButton', 'guideButton', 'handGuide', 'helpButton', 'help', 'closeHelp', 'helpReady', 'nextButton', 'targetList', 'points', 'oxygenFill', 'resultPoints', 'diverConsole', 'bossHud', 'bossBanner', 'scoreLabel', 'bossHp', 'bossHealth', 'bossHealthFill', 'bossAttackHint', 'oxygenHud', 'oxygenMeter', 'walletCoins', 'walletGems', 'shopButton', 'resultShopButton', 'shop', 'closeShop', 'skinGrid', 'shopCoins', 'shopGems', 'shopMessage', 'rewards', 'toast', 'coach', 'levelCards', 'resultStars', 'shopPreview', 'shopTabs', 'walletCoinsWrap', 'coopButton', 'coopBanner', 'coopText', 'leaveRoom', 'earn', 'coop', 'closeCoop', 'coopMenu', 'hostButton', 'codeInput', 'joinButton', 'coopWait', 'roomCode', 'cancelRoom', 'coopMessage', 'partnerHud', 'partnerText', 'emoteBar', 'coopResult', 'progressButton', 'progress', 'closeProgress', 'backupCode', 'copyBackup', 'downloadBackup', 'restoreInput', 'restoreFile', 'checkRestore', 'confirmRestore', 'progressMessage', 'progressStatus', 'storageStatus', 'walletCandyWrap', 'walletCandy', 'shopCandyWrap', 'shopCandy', 'dropNotice', 'inviteLink', 'copyInvite', 'eventBanner', 'levelLabel', 'hudBar', 'idlePanel', 'handsCanvas', 'handsButton', 'frenzyHud', 'frenzyBanner', 'frenzyTime', 'frenzyFill', 'frenzyMeter', 'frenzyInfo', 'bossName', 'bossBannerTitle', 'bossBannerText', 'frenzyPill', 'depthItem', 'gameConsole', 'keyboardButton', 'keyboardArea', 'albumButton', 'resultAlbumButton', 'album', 'closeAlbum', 'albumSummary', 'albumFocus', 'albumGrid', 'missionsButton', 'missionLine', 'missions', 'closeMissions', 'missionList', 'missionBonus', 'streakLine', 'medalCount', 'medalGrid', 'aquarium', 'aquariumNote', 'decorMessage', 'decorGrid', 'words', 'closeWords', 'wordsButton', 'wordForm', 'wordInput', 'wordMessage', 'wordList', 'wordsOn'];
+  const ids = ['scene', 'level', 'relaxed', 'record', 'keyboard', 'fingerHint', 'wordDisplay', 'depth', 'score', 'air', 'typing', 'status', 'feedback', 'welcome', 'results', 'pauseOverlay', 'pauseButton', 'resultLabel', 'resultTitle', 'resultMessage', 'resultWords', 'resultAccuracy', 'resultSpeed', 'againButton', 'resumeButton', 'startButton', 'homeButton', 'exitButton', 'soundButton', 'guideButton', 'handGuide', 'helpButton', 'help', 'closeHelp', 'helpReady', 'nextButton', 'targetList', 'points', 'oxygenFill', 'resultPoints', 'diverConsole', 'bossHud', 'bossBanner', 'scoreLabel', 'bossHp', 'bossHealth', 'bossHealthFill', 'bossAttackHint', 'oxygenHud', 'oxygenMeter', 'walletCoins', 'walletGems', 'shopButton', 'resultShopButton', 'shop', 'closeShop', 'skinGrid', 'shopCoins', 'shopGems', 'shopMessage', 'rewards', 'toast', 'coach', 'levelCards', 'resultStars', 'shopPreview', 'shopTabs', 'walletCoinsWrap', 'coopButton', 'coopBanner', 'coopText', 'leaveRoom', 'earn', 'coop', 'closeCoop', 'coopMenu', 'hostButton', 'codeInput', 'joinButton', 'coopWait', 'roomCode', 'cancelRoom', 'coopMessage', 'partnerHud', 'partnerText', 'emoteBar', 'coopResult', 'progressButton', 'progress', 'closeProgress', 'backupCode', 'copyBackup', 'downloadBackup', 'restoreInput', 'restoreFile', 'checkRestore', 'confirmRestore', 'progressMessage', 'progressStatus', 'storageStatus', 'walletCandyWrap', 'walletCandy', 'shopCandyWrap', 'shopCandy', 'dropNotice', 'inviteLink', 'copyInvite', 'eventBanner', 'levelLabel', 'hudBar', 'idlePanel', 'handsCanvas', 'handsButton', 'frenzyHud', 'frenzyBanner', 'frenzyTime', 'frenzyFill', 'frenzyMeter', 'frenzyInfo', 'bossName', 'bossBannerTitle', 'bossBannerText', 'frenzyPill', 'depthItem', 'gameConsole', 'keyboardButton', 'keyboardArea', 'albumButton', 'resultAlbumButton', 'album', 'closeAlbum', 'albumSummary', 'albumFocus', 'albumGrid', 'missionsButton', 'missionLine', 'missions', 'closeMissions', 'missionList', 'missionBonus', 'streakLine', 'medalCount', 'medalGrid', 'aquarium', 'aquariumNote', 'decorMessage', 'decorGrid', 'words', 'closeWords', 'wordsButton', 'wordForm', 'wordInput', 'wordMessage', 'wordList', 'wordsOn', 'parentButton', 'parent', 'closeParent', 'parentIntro', 'parentKpis', 'parentCharts', 'parentTableToggle', 'parentTable', 'parentKeys', 'parentKeyLegend', 'parentFingers', 'parentTips', 'chartTip', 'gameShell', 'cloudBox', 'cloudText', 'cloudCodeRow', 'cloudCode', 'copyCloud', 'cloudStatus', 'cloudConflict', 'cloudUseRemote', 'cloudUseLocal', 'cloudStart', 'cloudCreate', 'cloudJoin', 'cloudInput', 'cloudConfirm', 'cloudForget'];
   const elements = Object.fromEntries(ids.map(id => [id, new Element(id)]));
   const label = new Element(); elements.level.value = '0'; elements.relaxed.checked = true;
   const document = new Element();
-  document.getElementById = id => elements[id]; document.createElement = () => new Element();
+  document.getElementById = id => elements[id]; document.createElement = () => new Element(); document.createElementNS = () => new Element();
+  document.createTextNode = text => { const node = new Element(); node.textContent = text; return node; };
   document.querySelector = () => label;
   document.querySelectorAll = () => elements.keyboard.children.flatMap(row => row.children);
   let nextFrame, timerId = 0, time = 0; const timers = new Map(), store = {};
@@ -127,6 +128,17 @@ for (const reducedMotion of [false, true]) test(`UI: full expedition, victory re
     assert.deepEqual(JSON.parse(store['buzo-words-v1']).words, ['tomás']);
     assert.match(elements.wordsButton.textContent, /Mis palabras \(1\)/);
     elements.closeWords.onclick();
+    // The grown-ups' panel reads the dives played so far.
+    assert.equal(JSON.parse(store['buzo-history-v1']).length, 1);
+    elements.parentButton.onclick(); assert.equal(elements.parent.open, true);
+    assert.match(elements.parentIntro.textContent, /1 inmersión registrada/);
+    assert.equal(elements.parentKpis.children.length, 4); assert.equal(elements.parentCharts.children.length, 2);
+    assert.equal(elements.parentKeys.children.length, 3); assert.equal(elements.parentFingers.children.length, 8);
+    assert.ok(elements.parentTips.children.length >= 1);
+    const tableShown = !elements.parentTable.hidden; elements.parentTableToggle.onclick();
+    assert.equal(elements.parentTable.hidden, tableShown); assert.equal(elements.parentTableToggle.attributes['aria-expanded'], String(!tableShown));
+    assert.ok(elements.parentTable.children[0].children.length >= 2);
+    elements.closeParent.onclick();
     assert.equal(elements.bossHealth.attributes['aria-valuenow'], '0');
     assert.equal(elements.depth.textContent, '240 m');
     assert.notEqual(elements.resultAccuracy.textContent, '100%');

@@ -1078,10 +1078,20 @@ const BOSS_ART = { otto: drawOctopus, pinza: drawCrab, medusa: drawJellyfish };
 export function drawBoss(ctx, kind, x, y, scale, time = 0, boss = {}) { (BOSS_ART[kind] || drawOctopus)(ctx, x, y, scale, time, boss); }
 // A fish for the letter album, colored like the finger that types it. `seed` varies the pattern;
 // a fish not rescued yet is a dark silhouette.
+// `flip` turns it to swim left; `letter` is written on its side, never mirrored.
 export function drawLetterFish(ctx, x, y, scale, options = {}) {
-  const { color = '#8fe6c4', seed = 0, time = 0, locked = false } = options;
+  const { color = '#8fe6c4', seed = 0, time = 0, locked = false, flip = false, letter = '' } = options;
   const body = locked ? '#0f3a4a' : color, shade = locked ? '#0b2e3b' : '#00000026';
   ctx.save(); ctx.translate(x, y + Math.sin(time * 2 + seed) * 2); ctx.scale(scale, scale);
+  if (letter && !locked) {
+    ctx.save(); ctx.scale(flip ? -1 : 1, 1); drawFishBody(); ctx.restore();
+    ctx.font = 'bold 17px Trebuchet MS, Arial'; ctx.textAlign = 'center'; ctx.fillStyle = '#163e51';
+    ctx.fillText(letter.toUpperCase(), flip ? 5 : -5, 6);
+    ctx.restore(); return;
+  }
+  if (flip) ctx.scale(-1, 1);
+  drawFishBody(); ctx.restore();
+  function drawFishBody() {
   const wag = Math.sin(time * 6 + seed) * 4;
   polygon(ctx, [[-24, 0], [-42, -14 + wag], [-38, 0], [-42, 14 + wag]], body);
   polygon(ctx, [[-24, 0], [-42, -14 + wag], [-38, 0], [-42, 14 + wag]], shade);
@@ -1098,5 +1108,92 @@ export function drawLetterFish(ctx, x, y, scale, options = {}) {
   } else {
     ctx.strokeStyle = '#ffffff33'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(0, 0, 30, 19, 0, 0, TAU); ctx.stroke();
   }
+  }
+}
+
+// ----- Aquarium -----
+// One decoration standing on the sand at `floor`.
+export function drawDecor(ctx, id, x, floor, scale = 1, time = 0) {
+  ctx.save(); ctx.translate(x, floor); ctx.scale(scale, scale); ctx.lineCap = 'round';
+  if (id === 'algas') {
+    for (const [dx, tall, color] of [[-14, 70, '#3f9f62'], [0, 92, '#55b874'], [14, 64, '#3f9f62']]) {
+      const sway = Math.sin(time * 1.4 + dx) * 9;
+      ctx.strokeStyle = color; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(dx, 0);
+      ctx.bezierCurveTo(dx + sway, -tall * .35, dx - sway, -tall * .7, dx + sway * .6, -tall); ctx.stroke();
+    }
+  } else if (id === 'estrella') {
+    star(ctx, 0, -10, 16, 7, '#ff9a6b', 5, -Math.PI / 2 + Math.sin(time) * .05);
+    for (const [sx, sy] of [[0, -16], [-5, -9], [5, -9]]) ellipse(ctx, sx, sy, 1.6, 1.6, '#ffe3cf');
+  } else if (id === 'burbujero') {
+    rounded(ctx, -16, -16, 32, 16, 4, '#6b7a8a'); rounded(ctx, -8, -22, 16, 7, 3, '#8b9aab');
+    for (let i = 0; i < 6; i++) {
+      const rise = mod(time * 40 + i * 30, 180);
+      ctx.strokeStyle = '#e6fbff99'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(Math.sin(time * 3 + i) * 5, -26 - rise, 2.5 + i % 3, 0, TAU); ctx.stroke();
+    }
+  } else if (id === 'coral') {
+    ctx.strokeStyle = '#ef7fa8'; ctx.lineWidth = 8;
+    for (const branch of [[[0, 0], [0, -40], [-16, -66]], [[0, -30], [18, -52], [24, -76]], [[0, -40], [4, -84]], [[-8, -18], [-26, -38]]]) {
+      ctx.beginPath(); ctx.moveTo(...branch[0]); for (const point of branch.slice(1)) ctx.lineTo(...point); ctx.stroke();
+      ellipse(ctx, ...branch.at(-1), 6, 6, '#ffb0c9');
+    }
+  } else if (id === 'farol') {
+    line(ctx, [[0, 0], [0, -70]], '#4a5560', 4);
+    ellipse(ctx, 0, -82, 30 + Math.sin(time * 3) * 2, 30, '#ffe27a22');
+    rounded(ctx, -9, -94, 18, 22, 4, '#ffe27a'); rounded(ctx, -11, -98, 22, 5, 2, '#4a5560'); rounded(ctx, -11, -73, 22, 4, 2, '#4a5560');
+  } else if (id === 'cofre') {
+    drawTreasure(ctx, 0, -17, .55, Math.sin(time * .8) > .2 ? 1 : 0);
+  } else if (id === 'castillo') {
+    for (const [tx, tw, th] of [[-46, 24, 74], [22, 24, 74], [-22, 44, 56]]) {
+      rounded(ctx, tx, -th, tw, th, 2, '#d9c7a0');
+      for (let c = 0; c < tw - 4; c += 8) rounded(ctx, tx + c, -th - 7, 5, 8, 1, '#d9c7a0');
+    }
+    ctx.fillStyle = '#5b4a36'; ctx.beginPath(); ctx.moveTo(-9, 0); ctx.lineTo(-9, -22); ctx.arc(0, -22, 9, Math.PI, 0); ctx.lineTo(9, 0); ctx.fill();
+    for (const fx of [-34, 34]) { line(ctx, [[fx, -81], [fx, -100]], '#5b4a36', 2); polygon(ctx, [[fx, -100], [fx + 14 + Math.sin(time * 3 + fx) * 2, -95], [fx, -90]], '#ef6f6c'); }
+    for (const wx of [-38, 30]) rounded(ctx, wx, -54, 8, 11, 3, '#2a3a48');
+  } else if (id === 'barquito') {
+    drawShipwreck(ctx, 0, -40, .32, time, 0);
+  } else if (id === 'mini-otto') {
+    rounded(ctx, -34, -14, 68, 14, 4, '#9aa8a6');
+    drawOctopus(ctx, 0, -58, .3, time, { hp: 0, maxHp: 8, defeated: true, target: { x: 0, y: 80 } });
+  }
+  ctx.restore();
+}
+// The whole tank: water, sand, decorations behind and in front, and the rescued fish swimming.
+// fish: [{ letter, color, seed }]; decor: ids of the placed decorations.
+export function drawAquarium(ctx, width, height, time = 0, fish = [], decor = [], catalog = []) {
+  ctx.save();
+  const water = ctx.createLinearGradient(0, 0, 0, height);
+  water.addColorStop(0, '#2fb0bf'); water.addColorStop(.55, '#0c8796'); water.addColorStop(1, '#075468');
+  ctx.fillStyle = water; ctx.fillRect(0, 0, width, height);
+  for (let i = 0; i < 4; i++) {
+    const rx = width * (.15 + i * .24) + Math.sin(time * .3 + i) * 12;
+    polygon(ctx, [[rx, 0], [rx + 40, 0], [rx + 90, height * .8], [rx + 20, height * .8]], '#ffffff0d');
+  }
+  const floor = height * .86;
+  ctx.fillStyle = '#e8d3a0'; ctx.beginPath(); ctx.moveTo(0, floor);
+  for (let x = 0; x <= width; x += 20) ctx.lineTo(x, floor + Math.sin(x * .05) * 3);
+  ctx.lineTo(width, height); ctx.lineTo(0, height); ctx.closePath(); ctx.fill();
+  if (decor.includes('arena')) {
+    const pebbles = ['#ff8fb8', '#ffd34f', '#69db7c', '#4dabf7', '#b197fc', '#ffa94d'];
+    for (let i = 0; i < 60; i++) ellipse(ctx, (i * 53.7) % width, floor + 6 + (i * 17.3) % (height - floor - 8), 3, 2.2, pebbles[i % pebbles.length]);
+  }
+  const placed = layer => catalog.filter(item => !item.floor && item.layer === layer && decor.includes(item.id));
+  const size = Math.min(1, height / 320);
+  for (const item of [...placed(0), ...placed(1)]) drawDecor(ctx, item.id, width * item.x, floor + 4, size, time);
+  fish.forEach((one, i) => {
+    const speed = .16 + (one.seed % 5) * .035, phase = one.seed * 1.7, swing = time * speed + phase;
+    const x = width * .5 + Math.sin(swing) * width * .4;
+    const y = height * (.14 + (i % 6) * .11) + Math.sin(time * 1.2 + one.seed) * 5;
+    drawLetterFish(ctx, x, y, .62 * size, { color: one.color, seed: one.seed, time, flip: Math.cos(swing) < 0, letter: one.letter });
+  });
+  for (const item of placed(2)) drawDecor(ctx, item.id, width * item.x, floor + 10, size, time);
+  for (let i = 0; i < 10; i++) {
+    const rise = mod(time * 25 + i * 37, height);
+    ctx.strokeStyle = '#e6fbff55'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc((i * 97.3) % width + Math.sin(time + i) * 6, height - rise, 2 + i % 3, 0, TAU); ctx.stroke();
+  }
+  // A glint on the glass.
+  polygon(ctx, [[width * .06, 0], [width * .1, 0], [width * .02, height], [0, height], [0, height * .8]], '#ffffff12');
   ctx.restore();
 }

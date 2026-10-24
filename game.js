@@ -1,4 +1,4 @@
-import { drawBoat, drawBoatShadow, drawDiver, drawOceanBackdrop, drawOceanForeground, drawShipwreck, drawBoss, drawCreature, drawLoot, drawLetterFish, diverTop } from './visuals.js';
+import { drawBoat, drawBoatShadow, drawDiver, drawOceanBackdrop, drawOceanForeground, drawShipwreck, drawBoss, drawCreature, drawLoot, drawLetterFish, drawAquarium, drawDecor, diverTop } from './visuals.js';
 import { LEVELS, MISSION_WORDS, BOSS_HITS, FRENZY, bossOf, currentWord, fingerFor, accuracy, computeRewards, starsFor, refreshRun, partnerBossHit, bossAttackDamage, createRun, activeSharks, chooseTarget, typeInRun, tickRun } from './engine.js';
 import { SKINS, SLOTS, ACCESSORIES, skinById, sanitizeWallet, canAfford, buySkin, equipSkin, equipGear, priceOf, onSale } from './skins.js';
 import { makeBackup, readBackup, describeBackup, needsBackup, backupAge, sanitizeStars, sanitizeRecords } from './save.js';
@@ -6,6 +6,8 @@ import { loadPeer, hostRoom, joinRoom, normalizeCode, inviteLink, codeFromLink, 
 import { currentEvent, eventWords } from './events.js';
 import { createHands, stepHands, drawHands, COLORS } from './hands.js';
 import { dayKey, summarizeRun, dailyMissions, applyRun, forDay, liveStreak, sanitizeMissions, MEDALS, medalDone, DAILY_BONUS } from './missions.js';
+import { DECOR, sanitizeAquarium, buyDecor, toggleDecor, shownDecor, canBuyDecor } from './aquarium.js';
+import { checkWord, sanitizeOwnWords, OWN_WORDS } from './words.js';
 import { ALBUM_ROWS, LETTERS, RESCUE, ALBUM_PRIZE, sanitizeAlbum, recordRun, albumRewards, weakLetters, lettersIn, accuracyOf, progressOf } from './album.js';
 const $ = id => document.getElementById(id);
 const canvas = $('scene'), ctx = canvas.getContext('2d');
@@ -33,6 +35,11 @@ try { album = sanitizeAlbum(JSON.parse(localStorage.getItem('buzo-album-v1') || 
 let missions = sanitizeMissions(null);
 try { missions = sanitizeMissions(JSON.parse(localStorage.getItem('buzo-missions-v1') || 'null')); } catch { /* Persistence is optional. */ }
 function saveMissions() { try { localStorage.setItem('buzo-missions-v1', JSON.stringify(missions)); } catch { /* Optional in private browsing. */ } }
+let aquarium = sanitizeAquarium(null), ownWords = sanitizeOwnWords(null);
+try { aquarium = sanitizeAquarium(JSON.parse(localStorage.getItem('buzo-aquarium-v1') || 'null')); } catch { /* Persistence is optional. */ }
+try { ownWords = sanitizeOwnWords(JSON.parse(localStorage.getItem('buzo-words-v1') || 'null')); } catch { /* Persistence is optional. */ }
+function saveAquarium() { try { localStorage.setItem('buzo-aquarium-v1', JSON.stringify(aquarium)); } catch { /* Optional in private browsing. */ } }
+function saveOwnWords() { try { localStorage.setItem('buzo-words-v1', JSON.stringify(ownWords)); } catch { /* Optional in private browsing. */ } }
 function saveAlbum() { try { localStorage.setItem('buzo-album-v1', JSON.stringify(album)); } catch { /* Optional in private browsing. */ } }
 function saveWallet() {
   try { localStorage.setItem('buzo-wallet-v1', JSON.stringify(wallet)); } catch { /* Optional in private browsing. */ }
@@ -45,7 +52,7 @@ const capital = text => text.charAt(0).toUpperCase() + text.slice(1);
 // Modes where the typing box is live.
 const typingMode = () => ['playing', 'boss', 'frenzy'].includes(state.mode);
 const inFrenzy = () => state.mode === 'frenzy' || state.mode === 'paused' && pausedMode === 'frenzy';
-const modalOpen = () => $('help').open || $('shop').open || $('coop').open || $('progress').open || $('album').open || $('missions').open;
+const modalOpen = () => $('help').open || $('shop').open || $('coop').open || $('progress').open || $('album').open || $('missions').open || $('words').open;
 // ----- Two-player room: shared oxygen, words and boss, one device each -----
 let room = null, linked = false, partner = null, coopNote = '', syncClock = 0, waitingPartner = false;
 // Oxygen is decided by the host. The guest numbers its own changes and keeps the ones
@@ -358,7 +365,7 @@ function start() {
   const level = Number($('level').value);
   // Letters the album says need practice show up in more of this world's words.
   const focus = weakLetters(album, lettersIn(LEVELS[level].words));
-  state = createRun(level, $('relaxed').checked, Math.random, { coop: coopActive(), event: season?.id, eventWords: eventWords(season, LEVELS[level].events), focus });
+  state = createRun(level, $('relaxed').checked, Math.random, { coop: coopActive(), event: season?.id, eventWords: eventWords(season, LEVELS[level].events), focus, ownWords: ownWords.on ? ownWords.words : [] });
   sendHello(); syncClock = 0; emotes.length = 0; o2Seq = 0; o2Pending = []; o2Ack = 0;
   particles.length = 0; lootStart.clear(); Object.assign(anim, { cheer: 0, hurt: 0, type: 0, flip: false });
   if (reducedMotion) state.diveTime = 1.5;
@@ -637,7 +644,7 @@ async function protectStorage() {
   try { if (navigator.storage?.persist) return await navigator.storage.persist(); } catch { /* Optional. */ }
   return false;
 }
-const snapshot = () => ({ wallet, stars, records, sound, album, missions });
+const snapshot = () => ({ wallet, stars, records, sound, album, missions, aquarium, ownWords });
 function markBackup() {
   lastBackup = Date.now();
   try { localStorage.setItem('buzo-backup-v1', JSON.stringify({ at: lastBackup })); } catch { /* Optional. */ }
@@ -675,7 +682,8 @@ function checkRestore() {
 }
 function applyRestore() {
   if (!pendingRestore) return;
-  ({ wallet, stars, records, sound, album, missions } = { ...pendingRestore }); saveAlbum(); saveMissions(); renderMissionLine();
+  ({ wallet, stars, records, sound, album, missions, aquarium, ownWords } = { ...pendingRestore });
+  saveAlbum(); saveMissions(); saveAquarium(); saveOwnWords(); renderMissionLine(); renderWords();
   try {
     localStorage.setItem('buzo-records-v4', JSON.stringify(records)); localStorage.setItem('buzo-stars-v1', JSON.stringify(stars));
     localStorage.setItem('buzo-sound-v1', sound ? 'on' : 'off');
@@ -712,7 +720,47 @@ function fishCard(letter, weak) {
   card.append(view); card.append(name); card.append(meter); card.append(note);
   return card;
 }
+// ----- Aquarium -----
+const tankFish = () => album.caught.map(letter => ({ letter, color: COLORS[fingerFor(letter).color], seed: LETTERS.indexOf(letter) }));
+function paintAquarium(time) {
+  const view = $('aquarium').getContext('2d');
+  if (view) drawAquarium(view, 720, 300, reducedMotion ? 0 : time, tankFish(), shownDecor(aquarium), DECOR);
+}
+function priceText(price) { return [price.coins && `${price.coins} monedas`, price.gems && `${price.gems} gemas`].filter(Boolean).join(' y '); }
+function decorCard(item) {
+  const owned = aquarium.owned.includes(item.id), placed = owned && !aquarium.hidden.includes(item.id);
+  const card = document.createElement('div'); card.className = `decor-card ${placed ? 'placed' : ''}`;
+  const view = document.createElement('canvas'); view.width = 130; view.height = 80; view.setAttribute('aria-hidden', 'true');
+  const paint = view.getContext('2d');
+  if (paint) {
+    if (item.floor) drawAquarium(paint, 130, 80, 0, [], ['arena'], DECOR);
+    else drawDecor(paint, item.id, 65, 76, .62, 0);
+  }
+  const name = document.createElement('strong'); name.textContent = item.name;
+  const price = document.createElement('small'); price.textContent = owned ? (placed ? 'En tu acuario' : 'Guardado') : priceText(item.price);
+  const button = document.createElement('button'); button.type = 'button';
+  if (owned) {
+    button.textContent = placed ? 'Sacar' : 'Poner';
+    button.onclick = () => { toggleDecor(aquarium, item.id); saveAquarium(); renderAlbum(); };
+  } else {
+    const ready = canBuyDecor(wallet, item);
+    button.textContent = ready ? 'Comprar' : 'Te faltan monedas';
+    if (item.price.gems && wallet.gems < item.price.gems) button.textContent = 'Te faltan gemas';
+    button.disabled = !ready;
+    button.onclick = () => {
+      if (!buyDecor(aquarium, wallet, item.id)) return;
+      saveAquarium(); saveWallet(); beep('prize'); renderAlbum();
+      $('decorMessage').textContent = `¡${item.name} ya está en tu acuario!`;
+    };
+  }
+  card.append(view); card.append(name); card.append(price); card.append(button);
+  return card;
+}
 function renderAlbum() {
+  $('aquariumNote').textContent = album.caught.length ? `Nadan ${album.caught.length} ${album.caught.length === 1 ? 'pez' : 'peces'}. Rescatá más escribiendo bien cada letra. Tenés ${wallet.coins} monedas y ${wallet.gems} gemas para decorar.` : `Todavía no rescataste peces: escribí bien cada letra ${RESCUE.hits} veces y su pez viene a nadar acá. Tenés ${wallet.coins} monedas para decorar.`;
+  $('decorGrid').replaceChildren();
+  for (const item of DECOR) $('decorGrid').append(decorCard(item));
+  paintAquarium(clock);
   $('albumSummary').textContent = `Rescataste ${album.caught.length} de ${LETTERS.length} peces. Escribí cada letra bien ${RESCUE.hits} veces, con buena puntería, para rescatar su pez: +${ALBUM_PRIZE.fish} monedas por pez y +${ALBUM_PRIZE.row} gemas por fila completa.`;
   const weak = weakLetters(album);
   $('albumFocus').hidden = !weak.length;
@@ -726,7 +774,31 @@ function renderAlbum() {
     $('albumGrid').append(title); $('albumGrid').append(grid);
   }
 }
-function openAlbum() { pause(); renderAlbum(); $('album').showModal(); }
+function openAlbum() { pause(); $('decorMessage').textContent = ''; renderAlbum(); $('album').showModal(); }
+// ----- Own words -----
+function renderWords() {
+  $('wordsButton').textContent = ownWords.words.length ? `✏️ Mis palabras (${ownWords.words.length})` : '✏️ Mis palabras';
+  $('wordsOn').checked = ownWords.on;
+  $('wordList').replaceChildren();
+  for (const word of ownWords.words) {
+    const chip = document.createElement('span'); chip.className = 'word-chip'; chip.textContent = word;
+    const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = '×'; remove.setAttribute('aria-label', `Borrar ${word}`);
+    remove.onclick = () => { ownWords.words = ownWords.words.filter(entry => entry !== word); saveOwnWords(); renderWords(); wordMessage(`Borraste «${word}».`); };
+    chip.append(remove); $('wordList').append(chip);
+  }
+}
+function wordMessage(text, error = false) { $('wordMessage').textContent = text; $('wordMessage').classList.toggle('error', error); }
+$('wordsButton').onclick = () => { wordMessage(`Podés guardar hasta ${OWN_WORDS.max} palabras.`); renderWords(); $('words').showModal(); $('wordInput').focus(); };
+$('closeWords').onclick = () => $('words').close();
+$('wordForm').onsubmit = event => {
+  event.preventDefault();
+  const { word, error } = checkWord(ownWords.words, $('wordInput').value);
+  if (error) { wordMessage(error, true); return; }
+  ownWords.words.push(word); saveOwnWords(); renderWords();
+  $('wordInput').value = ''; $('wordInput').focus();
+  wordMessage(`¡Agregaste «${word}»! Va a aparecer en los mundos que tienen sus letras.`);
+};
+$('wordsOn').onchange = () => { ownWords.on = $('wordsOn').checked; saveOwnWords(); };
 $('albumButton').onclick = $('resultAlbumButton').onclick = openAlbum;
 $('closeAlbum').onclick = () => $('album').close();
 $('album').addEventListener('close', () => { if (state.mode === 'paused') $('resumeButton').focus(); });
@@ -882,16 +954,18 @@ function stepAnimations(dt) {
 function pose(look = 0) {
   return { cheer: anim.cheer, flip: anim.flip, hurt: anim.hurt, type: anim.type, worried: !state.relaxed && state.oxygen <= 30 && ['playing', 'boss'].includes(state.mode), look };
 }
-function label(word, x, y, labelY, selected, tether = true) {
+// `mine` marks the player's own words with a small star inside the label.
+function label(word, x, y, labelY, selected, tether = true, mine = false) {
   ctx.font = `bold ${width < 500 ? 15 : 20}px Trebuchet MS, Arial`;
-  const labelWidth = ctx.measureText(word).width + 26;
+  const labelWidth = ctx.measureText(word).width + 26 + (mine ? 18 : 0);
   const labelX = Math.max(labelWidth / 2 + 8, Math.min(width - labelWidth / 2 - 8, x));
   ctx.strokeStyle = selected ? '#ffdb70aa' : '#b6e0dc55'; ctx.lineWidth = 1;
   if (tether) { ctx.beginPath(); ctx.moveTo(labelX, labelY + 32); ctx.lineTo(x, y - 12); ctx.stroke(); }
   ctx.fillStyle = selected ? '#ffdb70' : '#edf6f4';
   ctx.beginPath(); ctx.roundRect(labelX - labelWidth / 2, labelY, labelWidth, 34, 8); ctx.fill();
   if (selected) { ctx.strokeStyle = '#fff5c2'; ctx.lineWidth = 2; ctx.stroke(); }
-  ctx.fillStyle = '#164b57'; ctx.textAlign = 'center'; ctx.fillText(word, labelX, labelY + 23);
+  ctx.fillStyle = '#164b57'; ctx.textAlign = 'center'; ctx.fillText(word, labelX + (mine ? 9 : 0), labelY + 23);
+  if (mine) { ctx.fillStyle = selected ? '#b5852c' : '#e5ae2a'; ctx.font = `bold ${width < 500 ? 13 : 16}px Trebuchet MS, Arial`; ctx.fillText('★', labelX - labelWidth / 2 + 14, labelY + 23); }
 }
 // Where the oxygen meter sits: just above the tallest piece the diver wears.
 function hudTop(y, scale, skin = wallet.equipped, gear = wallet.gear) { return y + (diverTop(skin, gear) - 4) * scale - 43; }
@@ -993,7 +1067,7 @@ function draw() {
     ctx.save(); if (loot.departure === 'lost') ctx.globalAlpha = 1 - exit;
     drawLoot(ctx, loot.kind, x, y, width < 500 ? .75 : 1, { time: t, id: loot.id, flinch: reducedMotion ? 0 : loot.flinch, caught: loot.departure === 'caught' ? exit : 0 });
     ctx.restore();
-    if (!loot.departure) label(loot.word, x, y, Math.max(safe + 4, y - labelGap), loot.id === state.targetId, false);
+    if (!loot.departure) label(loot.word, x, y, Math.max(safe + 4, y - labelGap), loot.id === state.targetId, false, state.own?.includes(loot.word));
   }
   for (const enemy of frenzy ? [] : state.sharks) {
     const startX = width * (enemy.side === 'left' ? .1 : .9);
@@ -1016,7 +1090,7 @@ function draw() {
     });
     // Labels stay below the floating counters at the top of the ocean.
     const lift = (width < 500 ? 43 : 58) + (enemy.kind === 'puffer' ? 12 : 0);
-    if (!fleeing) label(enemy.word, x, y, Math.max(safe + 4, Math.min(height * .63, height * laneY[enemy.lane] - lift)), enemy.id === state.targetId);
+    if (!fleeing) label(enemy.word, x, y, Math.max(safe + 4, Math.min(height * .63, height * laneY[enemy.lane] - lift)), enemy.id === state.targetId, true, state.own?.includes(enemy.word));
   }
   if (!state.relaxed && state.oxygen <= 30) {
     ctx.strokeStyle = '#ef8f83'; ctx.lineWidth = 3; ctx.strokeRect(2, 2, width - 4, height - 4);
@@ -1081,7 +1155,9 @@ function frame(now) {
   if (state.boss) updateBossHud();
   if (state.frenzy) updateFrenzyHud();
   if (state.mode === 'ended') { hud(); finish(); }
-  draw(); renderHands(dt); requestAnimationFrame(frame);
+  draw(); renderHands(dt);
+  if ($('album').open) paintAquarium(now / 1000);
+  requestAnimationFrame(frame);
 }
 if (season) { $('eventBanner').hidden = false; $('eventBanner').textContent = `🎃 ${season.name} · ¡ganá caramelos!`; $('eventBanner').title = season.blurb; }
-showKeyboard(); showHands(); measureHands(); renderMissionLine(); resize(); saveWallet(); showSound(); renderLobby(); showRecord(); hud(); requestAnimationFrame(frame);
+showKeyboard(); showHands(); measureHands(); renderMissionLine(); renderWords(); resize(); saveWallet(); showSound(); renderLobby(); showRecord(); hud(); requestAnimationFrame(frame);

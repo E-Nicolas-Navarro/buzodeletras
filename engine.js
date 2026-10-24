@@ -1,4 +1,4 @@
-import { letterKey } from './album.js';
+import { letterKey, lettersIn } from './album.js';
 // Worlds in learning order. `id` keys saved progress, so the order can change safely.
 // `events` picks the seasonal word list (null: row-only worlds keep their letters).
 export const LEVELS = [
@@ -37,12 +37,17 @@ export function fingerFor(char) {
   return { color: 'pink', name: 'meñique derecho', home: 'Ñ' };
 }
 // `focus` letters need practice: up to half the deck is words that use them, dealt first.
-export function makeDeck(level, random = Math.random, extra = [], focus = []) {
-  let words = [...LEVELS[level].words, ...extra];
+// `own` words are the player's: up to four of them lead the deck.
+export function makeDeck(level, random = Math.random, extra = [], focus = [], own = []) {
+  let words = [...new Set([...LEVELS[level].words, ...extra, ...own])];
   for (let i = words.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1)); [words[i], words[j]] = [words[j], words[i]]; }
   if (focus.length) {
     const practice = words.filter(word => [...word].some(char => focus.includes(letterKey(char)))).slice(0, 6);
     words = [...practice, ...words.filter(word => !practice.includes(word))];
+  }
+  if (own.length) {
+    const mine = words.filter(word => own.includes(word)).slice(0, 4);
+    words = [...mine, ...words.filter(word => !mine.includes(word))];
   }
   // Start the first adventure at the index-finger anchors, not at a random word.
   if (LEVELS[level].id === 'centro') return ['fff', 'jjj', ...words.filter(word => !['fff', 'jjj'].includes(word))].slice(0, 12);
@@ -73,12 +78,16 @@ export function creatureFor(word) { return word.length <= 3 ? 'puffer' : word.le
 export function createRun(level, relaxed = false, random = Math.random, options = {}) {
   // Seasonal words join only the worlds that already use the whole keyboard.
   const extra = LEVELS[level].events !== null && Array.isArray(options.eventWords) ? options.eventWords.filter(word => typeof word === 'string' && word) : [];
+  // The player's own words join a row-only world only when they fit its letters.
+  const allowed = lettersIn(LEVELS[level].words);
+  const own = (Array.isArray(options.ownWords) ? options.ownWords : []).map(word => normalize(String(word)))
+    .filter(word => word && (LEVELS[level].events !== null || [...word].every(char => allowed.includes(letterKey(char)))));
   return {
-    words: [...LEVELS[level].words, ...extra], event: options.event || null, golden: 0, whaleSeen: false, whales: 0,
+    words: [...new Set([...LEVELS[level].words, ...extra, ...own])], own, event: options.event || null, golden: 0, whaleSeen: false, whales: 0,
     mode: 'diving', level, relaxed, random, diveTime: 0, elapsed: 0,
     score: 0, points: 0, oxygen: 100, depth: 0, visualDepth: 0,
     attempts: 0, mistakes: 0, collisions: 0, streak: 0, bestStreak: 0, wave: 1, sharks: [],
-    deck: makeDeck(level, random, extra, options.focus || []), focus: options.focus || [], cursor: 0, nextId: 1,
+    deck: makeDeck(level, random, extra, options.focus || [], own), focus: options.focus || [], cursor: 0, nextId: 1,
     // Every try per album letter, in order ('1' right, '0' wrong), merged into the album when the run ends.
     letters: {},
     spawnIn: 0, targetId: null, input: '', effects: [], won: false, boss: null,

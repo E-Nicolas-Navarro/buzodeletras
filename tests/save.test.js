@@ -59,3 +59,10 @@ test('missions, streak and medals travel in backups', () => {
   assert.deepEqual(data.missions.medals, ['first']); assert.equal(data.missions.stats.runs, 1); assert.equal(data.missions.day, '2026-10-20');
   assert.deepEqual(readBackup(makeBackup(progress())).missions, emptyMissions());
 });
+
+test('the aquarium and own words travel in backups', () => {
+  const data = readBackup(makeBackup({ ...progress(), aquarium: { owned: ['algas', 'castillo'], hidden: ['algas'] }, ownWords: { words: ['tomás', 'firulais'], on: false } }));
+  assert.deepEqual(data.aquarium, { owned: ['algas', 'castillo'], hidden: ['algas'] });
+  assert.deepEqual(data.ownWords, { words: ['tomás', 'firulais'], on: false });
+  assert.deepEqual(readBackup(makeBackup(progress())).ownWords, { words: [], on: true });
+});

@@ -4,7 +4,7 @@ const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascrip
 createServer(async (req, res) => {
   const pathname = new URL(req.url, 'http://localhost').pathname;
   const file = pathname === '/' ? 'index.html' : pathname.slice(1);
-  if (!['index.html', 'style.css', 'game.js', 'engine.js', 'visuals.js', 'skins.js', 'net.js', 'save.js', 'events.js', 'hands.js', 'album.js', 'missions.js'].includes(file)) { res.writeHead(404); res.end('No encontrado'); return; }
+  if (!['index.html', 'style.css', 'game.js', 'engine.js', 'visuals.js', 'skins.js', 'net.js', 'save.js', 'events.js', 'hands.js', 'album.js', 'missions.js', 'words.js', 'aquarium.js'].includes(file)) { res.writeHead(404); res.end('No encontrado'); return; }
   try { const body = await readFile(new URL(file, import.meta.url)); res.setHeader('Content-Type', types[file.slice(file.lastIndexOf('.'))]); res.end(body); }
   catch { res.writeHead(500); res.end('No se pudo abrir el archivo'); }
 }).listen(process.env.PORT || 3000, () => console.log(`http://localhost:${process.env.PORT || 3000}`));

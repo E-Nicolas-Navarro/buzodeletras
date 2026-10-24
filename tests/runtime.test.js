@@ -26,7 +26,7 @@ class Element {
 }
 let focused = '';
 for (const reducedMotion of [false, true]) test(`UI: full expedition, victory reveal, pause and restart (reduced motion: ${reducedMotion})`, async () => {
-  const ids = ['scene', 'level', 'relaxed', 'record', 'keyboard', 'fingerHint', 'wordDisplay', 'depth', 'score', 'air', 'typing', 'status', 'feedback', 'welcome', 'results', 'pauseOverlay', 'pauseButton', 'resultLabel', 'resultTitle', 'resultMessage', 'resultWords', 'resultAccuracy', 'resultSpeed', 'againButton', 'resumeButton', 'startButton', 'homeButton', 'exitButton', 'soundButton', 'guideButton', 'handGuide', 'helpButton', 'help', 'closeHelp', 'helpReady', 'nextButton', 'targetList', 'points', 'oxygenFill', 'resultPoints', 'diverConsole', 'bossHud', 'bossBanner', 'scoreLabel', 'bossHp', 'bossHealth', 'bossHealthFill', 'bossAttackHint', 'oxygenHud', 'oxygenMeter', 'walletCoins', 'walletGems', 'shopButton', 'resultShopButton', 'shop', 'closeShop', 'skinGrid', 'shopCoins', 'shopGems', 'shopMessage', 'rewards', 'toast', 'coach', 'levelCards', 'resultStars', 'shopPreview', 'shopTabs', 'walletCoinsWrap', 'coopButton', 'coopBanner', 'coopText', 'leaveRoom', 'earn', 'coop', 'closeCoop', 'coopMenu', 'hostButton', 'codeInput', 'joinButton', 'coopWait', 'roomCode', 'cancelRoom', 'coopMessage', 'partnerHud', 'partnerText', 'emoteBar', 'coopResult', 'progressButton', 'progress', 'closeProgress', 'backupCode', 'copyBackup', 'downloadBackup', 'restoreInput', 'restoreFile', 'checkRestore', 'confirmRestore', 'progressMessage', 'progressStatus', 'storageStatus', 'walletCandyWrap', 'walletCandy', 'shopCandyWrap', 'shopCandy', 'dropNotice', 'inviteLink', 'copyInvite', 'eventBanner', 'levelLabel', 'hudBar', 'idlePanel', 'handsCanvas', 'handsButton', 'frenzyHud', 'frenzyBanner', 'frenzyTime', 'frenzyFill', 'frenzyMeter', 'frenzyInfo', 'bossName', 'bossBannerTitle', 'bossBannerText', 'frenzyPill', 'depthItem', 'gameConsole', 'keyboardButton', 'keyboardArea', 'albumButton', 'resultAlbumButton', 'album', 'closeAlbum', 'albumSummary', 'albumFocus', 'albumGrid', 'missionsButton', 'missionLine', 'missions', 'closeMissions', 'missionList', 'missionBonus', 'streakLine', 'medalCount', 'medalGrid'];
+  const ids = ['scene', 'level', 'relaxed', 'record', 'keyboard', 'fingerHint', 'wordDisplay', 'depth', 'score', 'air', 'typing', 'status', 'feedback', 'welcome', 'results', 'pauseOverlay', 'pauseButton', 'resultLabel', 'resultTitle', 'resultMessage', 'resultWords', 'resultAccuracy', 'resultSpeed', 'againButton', 'resumeButton', 'startButton', 'homeButton', 'exitButton', 'soundButton', 'guideButton', 'handGuide', 'helpButton', 'help', 'closeHelp', 'helpReady', 'nextButton', 'targetList', 'points', 'oxygenFill', 'resultPoints', 'diverConsole', 'bossHud', 'bossBanner', 'scoreLabel', 'bossHp', 'bossHealth', 'bossHealthFill', 'bossAttackHint', 'oxygenHud', 'oxygenMeter', 'walletCoins', 'walletGems', 'shopButton', 'resultShopButton', 'shop', 'closeShop', 'skinGrid', 'shopCoins', 'shopGems', 'shopMessage', 'rewards', 'toast', 'coach', 'levelCards', 'resultStars', 'shopPreview', 'shopTabs', 'walletCoinsWrap', 'coopButton', 'coopBanner', 'coopText', 'leaveRoom', 'earn', 'coop', 'closeCoop', 'coopMenu', 'hostButton', 'codeInput', 'joinButton', 'coopWait', 'roomCode', 'cancelRoom', 'coopMessage', 'partnerHud', 'partnerText', 'emoteBar', 'coopResult', 'progressButton', 'progress', 'closeProgress', 'backupCode', 'copyBackup', 'downloadBackup', 'restoreInput', 'restoreFile', 'checkRestore', 'confirmRestore', 'progressMessage', 'progressStatus', 'storageStatus', 'walletCandyWrap', 'walletCandy', 'shopCandyWrap', 'shopCandy', 'dropNotice', 'inviteLink', 'copyInvite', 'eventBanner', 'levelLabel', 'hudBar', 'idlePanel', 'handsCanvas', 'handsButton', 'frenzyHud', 'frenzyBanner', 'frenzyTime', 'frenzyFill', 'frenzyMeter', 'frenzyInfo', 'bossName', 'bossBannerTitle', 'bossBannerText', 'frenzyPill', 'depthItem', 'gameConsole', 'keyboardButton', 'keyboardArea', 'albumButton', 'resultAlbumButton', 'album', 'closeAlbum', 'albumSummary', 'albumFocus', 'albumGrid', 'missionsButton', 'missionLine', 'missions', 'closeMissions', 'missionList', 'missionBonus', 'streakLine', 'medalCount', 'medalGrid', 'aquarium', 'aquariumNote', 'decorMessage', 'decorGrid', 'words', 'closeWords', 'wordsButton', 'wordForm', 'wordInput', 'wordMessage', 'wordList', 'wordsOn'];
   const elements = Object.fromEntries(ids.map(id => [id, new Element(id)]));
   const label = new Element(); elements.level.value = '0'; elements.relaxed.checked = true;
   const document = new Element();
@@ -111,6 +111,22 @@ for (const reducedMotion of [false, true]) test(`UI: full expedition, victory re
     elements.missionsButton.onclick(); assert.equal(elements.missions.open, true);
     assert.equal(elements.missionList.children.length, 3); assert.equal(elements.medalGrid.children.length, 20);
     elements.closeMissions.onclick();
+    // The rescued fish swim in the aquarium; decorations are bought with the coins just earned.
+    elements.albumButton.onclick(); assert.match(elements.aquariumNote.textContent, /Nadan \d+ pe/);
+    assert.equal(elements.decorGrid.children.length, 10);
+    const algae = elements.decorGrid.children[0], buy = algae.children[3];
+    assert.equal(buy.textContent, 'Comprar'); buy.onclick();
+    assert.deepEqual(JSON.parse(store['buzo-aquarium-v1']).owned, ['algas']);
+    assert.match(elements.decorMessage.textContent, /Algas que bailan/);
+    elements.closeAlbum.onclick();
+    // Own words: added from the welcome screen, refused when they are not plain letters.
+    elements.wordsButton.onclick(); assert.equal(elements.words.open, true);
+    elements.wordInput.value = 'Tomás'; elements.wordForm.onsubmit({ preventDefault() {} });
+    elements.wordInput.value = 'r2d2'; elements.wordForm.onsubmit({ preventDefault() {} });
+    assert.match(elements.wordMessage.textContent, /solo letras/);
+    assert.deepEqual(JSON.parse(store['buzo-words-v1']).words, ['tomás']);
+    assert.match(elements.wordsButton.textContent, /Mis palabras \(1\)/);
+    elements.closeWords.onclick();
     assert.equal(elements.bossHealth.attributes['aria-valuenow'], '0');
     assert.equal(elements.depth.textContent, '240 m');
     assert.notEqual(elements.resultAccuracy.textContent, '100%');

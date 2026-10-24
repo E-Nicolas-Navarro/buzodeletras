@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { drawBoat, drawBoatShadow, drawDiver, drawOceanBackdrop, drawOceanForeground, REEF_LAYERS, layerOffset, drawShipwreck, drawOctopus, drawTreasure, drawLoot, drawBoss, drawLetterFish } from '../visuals.js';
+import { drawBoat, drawBoatShadow, drawDiver, drawOceanBackdrop, drawOceanForeground, REEF_LAYERS, layerOffset, drawShipwreck, drawOctopus, drawTreasure, drawLoot, drawBoss, drawLetterFish, drawAquarium, drawDecor } from '../visuals.js';
+import { DECOR } from '../aquarium.js';
 
 function recordingContext() {
   const initial = { globalAlpha: 1, fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter' };
@@ -223,4 +224,21 @@ test('album fish draw rescued and locked with balanced canvas state', () => {
     drawLetterFish(recording.ctx, 60, 40, 1, { color: '#8fe6c4', seed, time: 1.3, locked });
     recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
   }
+});
+test('the aquarium, every decoration and fish swimming both ways draw with balanced canvas state', () => {
+  for (const item of DECOR) for (const time of [0, 2.7]) {
+    const recording = recordingContext();
+    drawDecor(recording.ctx, item.id, 100, 200, .8, time);
+    recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
+  }
+  const fish = [...'fjañ'].map((letter, seed) => ({ letter, color: '#8fe6c4', seed }));
+  for (const decor of [[], DECOR.map(item => item.id)]) for (const time of [0, 5.3]) {
+    const recording = recordingContext();
+    drawAquarium(recording.ctx, 720, 300, time, fish, decor, DECOR);
+    recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
+    assert.ok(recording.calls.some(call => call[0] === 'fillText' && call[1] === 'Ñ'));
+  }
+  const recording = recordingContext();
+  drawLetterFish(recording.ctx, 50, 40, 1, { flip: true, letter: 'q', seed: 3 });
+  recording.assertBalanced(); assert.deepEqual(recording.properties(), recording.initial);
 });

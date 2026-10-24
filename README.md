@@ -20,6 +20,14 @@ El progreso (estrellas y récords) se guarda por mundo (`centro`, `arriba`, `aba
 
 Cada tecla de las tres filas es un **pez** (27 en total). Se rescata al escribir esa letra bien 15 veces mientras los últimos 20 intentos tengan al menos 85 % de aciertos. Cada pez nuevo da 20 monedas; cada fila completa, 3 gemas; el álbum completo, 10 gemas. El álbum detecta las letras que más cuestan (las de menor puntería reciente) y las muestra como «¡Practicala!»: en la próxima inmersión hasta la mitad del mazo son palabras con esas letras. Se guarda en este navegador (`buzo-album-v1`) y viaja en el código de respaldo; los códigos viejos sin álbum restauran uno vacío.
 
+### Mis palabras
+
+Desde la pantalla de inicio («✏️ Mis palabras») se guardan hasta 20 palabras propias: nombres, mascotas, amigos o cosas favoritas (solo letras, de 2 a 14, con tildes y Ñ). Aparecen en los tiburones con una ★ y hasta cuatro van al principio del mazo. Los mundos que usan todo el teclado las aceptan todas; los mundos de la fila central y de la fila de arriba solo las que se escriben con sus letras, para no romper la práctica de esas filas. Se pueden apagar sin borrarlas. Se guardan en `buzo-words-v1` y viajan en el respaldo.
+
+### Acuario
+
+El botón «Acuario» abre el acuario y el álbum: los peces rescatados nadan con su letra en el costado, y el acuario se decora con 10 objetos (algas, estrella de mar, burbujero, coral, farol, cofre, arena de colores, castillo, barquito hundido y una estatua de Otto que se paga con gemas). Cada decoración comprada se puede poner o guardar. Se guarda en `buzo-aquarium-v1` y viaja en el respaldo.
+
 ### Misiones del día, racha y medallas
 
 - **Tres misiones por día** (botón «Misiones» del encabezado): una fácil (palabras, inmersiones o letras), una de habilidad (racha, precisión, guardián, tesoros o ganar sin tiburones) y una de exploración (una fila o un mundo). Se eligen con la fecha del dispositivo, avanzan con cada inmersión del día y pagan entre 30 y 70 monedas; las tres juntas dan 2 gemas más.
@@ -152,6 +160,8 @@ Para ver los quince casos por separado con Node reciente: `node --test --test-is
 | `engine.js` | Reglas deterministas: tiburones, oleadas, objetivos, oxígeno, puntos y profundidad |
 | `game.js` | Control de partida, composición de escena, sonidos y récords locales |
 | `hands.js` | Manos fantasma sobre el teclado de referencia |
+| `words.js` | Palabras propias del jugador: validación y guardado |
+| `aquarium.js` | Decoraciones del acuario: catálogo, compra y ubicación |
 | `missions.js` | Misiones del día, racha de días y medallas |
 | `album.js` | Álbum de letras: peces por tecla, rescate, premios y letras para practicar |
 | `visuals.js` | Ilustraciones y capas 2.5D del barco, buzo (poses, trajes, mascotas, estelas), criaturas, arrecifes y peces |
